@@ -1,0 +1,2 @@
+-keep class android.app.StatusBarManager { *; }
+-keepclassmembers class com.zpic.launcher.data.** { *** Companion; }
