@@ -46,6 +46,8 @@ import com.zpic.launcher.data.HomeCell
 import com.zpic.launcher.data.HomeKind
 import com.zpic.launcher.data.Settings
 import com.zpic.launcher.data.addApps
+import com.zpic.launcher.data.appSpanX
+import com.zpic.launcher.data.appSpanY
 import com.zpic.launcher.data.addFolder
 import com.zpic.launcher.data.findFree
 import com.zpic.launcher.data.label
@@ -117,10 +119,10 @@ fun AddToHomeSheet(apps: List<AppEntry>, s: Settings, items: List<HomeCell>, pag
                     }
                 }
             } else Column(Modifier.padding(top = 8.dp)) {
-                ElementRow(Icons.Outlined.Schedule, "Clock", "Time and date, in your chosen style", items.any { it.kind == HomeKind.Clock }) { element(HomeKind.Clock, newId("clock"), (s.homeColumns * 3 / 5).coerceAtLeast(2), 2) }
-                ElementRow(Icons.Outlined.ViewList, "Pinned list", "Your pinned apps as a tidy list", items.any { it.kind == HomeKind.Pins }) { element(HomeKind.Pins, newId("pins"), (s.homeColumns * 3 / 5).coerceAtLeast(2), 2) }
-                ElementRow(Icons.Outlined.Subject, "Today's intention", "The line you set in Settings", items.any { it.kind == HomeKind.Intention }) { element(HomeKind.Intention, newId("int"), s.homeColumns, 1) }
-                ElementRow(Icons.Outlined.Notifications, "Notification shelf", "Apps with something waiting", items.any { it.kind == HomeKind.Shelf }) { element(HomeKind.Shelf, newId("shelf"), 1, 2) }
+                ElementRow(Icons.Outlined.Schedule, "Clock", "Time and date, in your chosen style", items.any { it.kind == HomeKind.Clock }) { element(HomeKind.Clock, newId("clock"), (s.homeColumns * 3 / 5).coerceAtLeast(2), s.homeRows / 3) }
+                ElementRow(Icons.Outlined.ViewList, "Pinned list", "Your pinned apps as a tidy list", items.any { it.kind == HomeKind.Pins }) { element(HomeKind.Pins, newId("pins"), (s.homeColumns * 3 / 5).coerceAtLeast(2), s.homeRows / 3) }
+                ElementRow(Icons.Outlined.Subject, "Today's intention", "The line you set in Settings", items.any { it.kind == HomeKind.Intention }) { element(HomeKind.Intention, newId("int"), s.homeColumns, appSpanY(s.homeRows)) }
+                ElementRow(Icons.Outlined.Notifications, "Notification shelf", "Apps with something waiting", items.any { it.kind == HomeKind.Shelf }) { element(HomeKind.Shelf, newId("shelf"), appSpanX(s.homeColumns), appSpanY(s.homeRows) * 2) }
                 ElementRow(Icons.Outlined.ViewList, "Dock", "A fixed row of apps on every page", s.showDock && s.dock.isNotEmpty(), onDock)
             }
         }

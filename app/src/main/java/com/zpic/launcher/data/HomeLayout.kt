@@ -1,6 +1,7 @@
 package com.zpic.launcher.data
 
 import kotlinx.serialization.Serializable
+import kotlin.math.roundToInt
 
 enum class HomeKind { Clock, Pins, Intention, Widget, App, Folder, Shelf }
 
@@ -22,12 +23,29 @@ data class HomeCell(
     val resizable get() = kind != HomeKind.App && kind != HomeKind.Folder
 }
 
+/** Apps fill about one fifth by one sixth of the page, whatever the grid density. */
+fun appSpanX(cols: Int) = (cols / 5f).roundToInt().coerceAtLeast(1)
+fun appSpanY(rows: Int) = (rows / 6f).roundToInt().coerceAtLeast(1)
+
+/** Saved layouts from the coarse 5 by 6 grid: every cell splits in two, so nothing visibly moves. */
+fun migrateGrid(s: Settings): Settings {
+    if (s.gridScaled) return s
+    val grid = s.grid ?: return s.copy(gridScaled = true)
+    val cols = if (s.homeColumns == 10) 10 else s.homeColumns * 2
+    val rows = if (s.homeRows == 12) 12 else s.homeRows * 2
+    return s.copy(
+        gridScaled = true, homeColumns = cols, homeRows = rows,
+        grid = grid.map { it.copy(col = it.col * 2, row = it.row * 2, spanX = it.spanX * 2, spanY = it.spanY * 2) },
+    )
+}
+
 fun defaultGrid(s: Settings): List<HomeCell> {
     val c = s.homeColumns; val r = s.homeRows
+    val tall = r / 3
     return buildList {
-        add(HomeCell("clock", HomeKind.Clock, col = 0, row = 0, spanX = (c * 3 / 5).coerceAtLeast(2), spanY = 2))
-        if (s.widgetId != -1) add(HomeCell("w${s.widgetId}", HomeKind.Widget, col = 0, row = 2, spanX = c, spanY = 2, widgetId = s.widgetId))
-        add(HomeCell("pins", HomeKind.Pins, col = 0, row = r - 2, spanX = (c * 3 / 5).coerceAtLeast(2), spanY = 2))
+        add(HomeCell("clock", HomeKind.Clock, col = 0, row = 0, spanX = (c * 3 / 5).coerceAtLeast(2), spanY = tall))
+        if (s.widgetId != -1) add(HomeCell("w${s.widgetId}", HomeKind.Widget, col = 0, row = tall, spanX = c, spanY = tall, widgetId = s.widgetId))
+        add(HomeCell("pins", HomeKind.Pins, col = 0, row = r - tall, spanX = (c * 3 / 5).coerceAtLeast(2), spanY = tall))
     }
 }
 
@@ -74,16 +92,16 @@ fun addApps(items: List<HomeCell>, keys: List<String>, page: Int, cols: Int, row
     var out = items
     for (k in keys) {
         if (out.any { it.app == k || k in it.apps }) continue
-        val spot = findFree(out, 1, 1, page, Int.MAX_VALUE / 2, cols, rows) ?: continue
-        out = out + HomeCell(newId("a"), HomeKind.App, spot.first, spot.second, spot.third, app = k)
+        val spot = findFree(out, appSpanX(cols), appSpanY(rows), page, Int.MAX_VALUE / 2, cols, rows) ?: continue
+        out = out + HomeCell(newId("a"), HomeKind.App, spot.first, spot.second, spot.third, appSpanX(cols), appSpanY(rows), app = k)
     }
     return out
 }
 
 fun addFolder(items: List<HomeCell>, keys: List<String>, title: String, page: Int, cols: Int, rows: Int): List<HomeCell> {
-    val spot = findFree(items, 1, 1, page, Int.MAX_VALUE / 2, cols, rows) ?: return items
-    return items.filter { it.kind != HomeKind.App || it.app !in keys } +
-        HomeCell(newId("f"), HomeKind.Folder, spot.first, spot.second, spot.third, apps = keys, title = title)
+    val rest = items.filter { it.kind != HomeKind.App || it.app !in keys }
+    val spot = findFree(rest, appSpanX(cols), appSpanY(rows), page, Int.MAX_VALUE / 2, cols, rows) ?: return items
+    return rest + HomeCell(newId("f"), HomeKind.Folder, spot.first, spot.second, spot.third, appSpanX(cols), appSpanY(rows), apps = keys, title = title)
 }
 
 /**
@@ -94,7 +112,9 @@ fun drop(items: List<HomeCell>, moved: HomeCell, cols: Int, rows: Int): List<Hom
     val rest = items.filter { it.id != moved.id }
     val at = moved.copy(col = moved.col.coerceIn(0, cols - moved.spanX), row = moved.row.coerceIn(0, rows - moved.spanY))
     if (moved.kind == HomeKind.App && moved.app != null) {
-        val hit = rest.firstOrNull { it.page == at.page && it.col == at.col && it.row == at.row && (it.kind == HomeKind.App || it.kind == HomeKind.Folder) }
+        // On a fine grid an icon covers several cells, so what counts is where the dropped icon's centre lands.
+        val cx = at.col + at.spanX / 2; val cy = at.row + at.spanY / 2
+        val hit = rest.firstOrNull { it.page == at.page && cx in it.col until it.col + it.spanX && cy in it.row until it.row + it.spanY && (it.kind == HomeKind.App || it.kind == HomeKind.Folder) }
         when (hit?.kind) {
             HomeKind.Folder -> return rest.map { if (it.id == hit.id) it.copy(apps = (it.apps + moved.app).distinct()) else it }
             HomeKind.App -> return rest.filter { it.id != hit.id } + hit.copy(id = newId("f"), kind = HomeKind.Folder, app = null, apps = listOfNotNull(hit.app, moved.app), title = "Folder")
@@ -142,8 +162,9 @@ fun withoutFromFolder(items: List<HomeCell>, folderId: String, key: String): Lis
 fun withShelf(items: List<HomeCell>, on: Boolean, page: Int, cols: Int, rows: Int): List<HomeCell> {
     if (!on) return items.filter { it.kind != HomeKind.Shelf }
     if (items.any { it.kind == HomeKind.Shelf }) return items
-    val spot = findFree(items, 1, 2, page, Int.MAX_VALUE / 2, cols, rows) ?: return items
-    return items + HomeCell(newId("shelf"), HomeKind.Shelf, spot.first, spot.second, spot.third, 1, 2)
+    val sx = appSpanX(cols); val sy = appSpanY(rows) * 2
+    val spot = findFree(items, sx, sy, page, Int.MAX_VALUE / 2, cols, rows) ?: return items
+    return items + HomeCell(newId("shelf"), HomeKind.Shelf, spot.first, spot.second, spot.third, sx, sy)
 }
 
 enum class HomePreset(val title: String, val hint: String) {
@@ -155,18 +176,20 @@ enum class HomePreset(val title: String, val hint: String) {
 /** Lays out the clock and text items for a preset. Apps, folders and widgets stay and flow around them. */
 fun applyPreset(items: List<HomeCell>, preset: HomePreset, cols: Int, rows: Int): List<HomeCell> {
     val wide = (cols * 3 / 5).coerceAtLeast(2)
+    val tall = rows / 3
+    val sx = appSpanX(cols); val sy = appSpanY(rows)
     val shapes = when (preset) {
         HomePreset.Minimal -> listOf(
-            HomeCell("clock", HomeKind.Clock, col = 0, row = 0, spanX = wide, spanY = 2),
-            HomeCell("pins", HomeKind.Pins, col = 0, row = rows - 2, spanX = wide, spanY = 2),
+            HomeCell("clock", HomeKind.Clock, col = 0, row = 0, spanX = wide, spanY = tall),
+            HomeCell("pins", HomeKind.Pins, col = 0, row = rows - tall, spanX = wide, spanY = tall),
         )
         HomePreset.Focused -> listOf(
-            HomeCell("clock", HomeKind.Clock, col = 0, row = 0, spanX = wide, spanY = 2),
-            HomeCell("intention", HomeKind.Intention, col = 0, row = 2, spanX = cols, spanY = 1),
-            HomeCell("pins", HomeKind.Pins, col = 0, row = rows - 2, spanX = wide, spanY = 2),
-            HomeCell("shelf", HomeKind.Shelf, col = cols - 1, row = rows - 2, spanX = 1, spanY = 2),
+            HomeCell("clock", HomeKind.Clock, col = 0, row = 0, spanX = wide, spanY = tall),
+            HomeCell("intention", HomeKind.Intention, col = 0, row = tall, spanX = cols, spanY = sy),
+            HomeCell("pins", HomeKind.Pins, col = 0, row = rows - tall, spanX = wide, spanY = tall),
+            HomeCell("shelf", HomeKind.Shelf, col = cols - sx, row = rows - sy * 2, spanX = sx, spanY = sy * 2),
         )
-        HomePreset.Stock -> listOf(HomeCell("clock", HomeKind.Clock, col = 0, row = 0, spanX = cols, spanY = 1))
+        HomePreset.Stock -> listOf(HomeCell("clock", HomeKind.Clock, col = 0, row = 0, spanX = cols, spanY = sy))
     }
     val kept = items.filter { it.kind == HomeKind.App || it.kind == HomeKind.Folder || it.kind == HomeKind.Widget }
     return fitted(shapes + kept, cols, rows)

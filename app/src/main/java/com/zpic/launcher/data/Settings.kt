@@ -51,7 +51,7 @@ data class Settings(
     val font: FontChoice = FontChoice.System,
     val motion: MotionLevel = MotionLevel.Expressive,
     val animSpeed: Float = 1f,
-    val animBounce: Float = .55f,
+    val animBounce: Float = .3f,
     val appAnim: AppAnim = AppAnim.Scale,
     val haptics: Boolean = true,
     val hapticStrength: Float = 0.7f,
@@ -73,8 +73,9 @@ data class Settings(
     val favorites: List<String> = emptyList(),
     val widgetId: Int = -1,
     val grid: List<HomeCell>? = null,
-    val homeColumns: Int = 5,
-    val homeRows: Int = 6,
+    val homeColumns: Int = 10,
+    val homeRows: Int = 12,
+    val gridScaled: Boolean = false,
     val showDock: Boolean = false,
     val dock: List<String> = emptyList(),
     val homeLabels: Boolean = true,
@@ -147,5 +148,5 @@ class SettingsRepo(private val context: Context, private val scope: CoroutineSco
         return true
     }
 
-    private fun decode(json: String) = runCatching { SettingsJson.decodeFromString(Settings.serializer(), json) }.getOrNull()
+    private fun decode(json: String) = runCatching { migrateGrid(SettingsJson.decodeFromString(Settings.serializer(), json)) }.getOrNull()
 }

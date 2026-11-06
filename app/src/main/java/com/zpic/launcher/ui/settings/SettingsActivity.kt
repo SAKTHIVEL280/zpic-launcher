@@ -544,8 +544,8 @@ private fun HomePage(s: Settings, up: Up) {
         }
     }
     Group("Grid") {
-        Range("Columns", s.homeColumns.toFloat(), 4f..7f, 2, { "${it.toInt()}" }) { v -> up { it.copy(homeColumns = v.toInt()) } }
-        Range("Rows", s.homeRows.toFloat(), 5f..9f, 3, { "${it.toInt()}" }) { v -> up { it.copy(homeRows = v.toInt()) } }
+        Range("Columns", s.homeColumns.toFloat(), 4f..16f, 11, { "${it.toInt()}" }) { v -> up { it.copy(homeColumns = v.toInt()) } }
+        Range("Rows", s.homeRows.toFloat(), 6f..20f, 13, { "${it.toInt()}" }) { v -> up { it.copy(homeRows = v.toInt()) } }
         Toggle("App labels", null, s.homeLabels) { v -> up { it.copy(homeLabels = v) } }
         Toggle("Lock layout", "Stops items being moved by accident", s.lockLayout) { v -> up { it.copy(lockLayout = v) } }
         Toggle("Hide status bar", "Swipe down from the edge to see it", s.hideStatusBar) { v -> up { it.copy(hideStatusBar = v) } }

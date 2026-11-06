@@ -358,11 +358,10 @@ private fun PageCanvas(
         val cwPx = constraints.maxWidth.toFloat() / s.homeColumns
         val chPx = constraints.maxHeight.toFloat() / s.homeRows
         val cw = with(density) { cwPx.toDp() }; val ch = with(density) { chPx.toDp() }
-        val icon = homeIconSize(s, cw, ch)
         val live = editor.dragged
         if (editor.editing) Canvas(Modifier.fillMaxSize()) {
             val dot = Color.White.copy(alpha = if (live != null) .55f else .22f)
-            for (c in 1 until s.homeColumns) for (r in 1 until s.homeRows) drawCircle(dot, 2.dp.toPx(), Offset(c * cwPx, r * chPx))
+            for (c in 1 until s.homeColumns) for (r in 1 until s.homeRows) drawCircle(dot, 1.5.dp.toPx(), Offset(c * cwPx, r * chPx))
         }
         // Where the item will land, shown while dragging so a drop is never a surprise.
         if (live != null && editor.dragPage == page) {
@@ -414,7 +413,7 @@ private fun PageCanvas(
                         },
                     ),
             ) {
-                CellContent(cell, size, apps, s, dots, waiting, ink, colors, resumeTick, icon, onLaunch, onMenu, onFolder)
+                CellContent(cell, size, apps, s, dots, waiting, ink, colors, resumeTick, homeIconSize(s, cell.spanX, cell.spanY, cw, ch), onLaunch, onMenu, onFolder)
                 if (editor.editing) {
                     Box(
                         Modifier.matchParentSize().clip(RoundedCornerShape(16.dp))
@@ -447,8 +446,10 @@ private fun PageCanvas(
     }
 }
 
-private fun homeIconSize(s: Settings, cw: Dp, ch: Dp): Int =
-    min(s.iconSize.toFloat(), min(cw.value * .72f, (ch.value - if (s.homeLabels) 24f else 0f) * .9f)).toInt().coerceAtLeast(28)
+private fun homeIconSize(s: Settings, spanX: Int, spanY: Int, cw: Dp, ch: Dp): Int {
+    val w = cw.value * spanX; val h = ch.value * spanY
+    return min(s.iconSize.toFloat(), min(w * .72f, (h - if (s.homeLabels) 24f else 0f) * .9f)).toInt().coerceAtLeast(24)
+}
 
 /** One flat action, like the row a phone shows under its own home screen. */
 @Composable
@@ -648,7 +649,7 @@ fun HomePages(
                         ) {
                             if (d.kind == HomeKind.Widget) Box(Modifier.fillMaxSize().clip(RoundedCornerShape(24.dp)).background(scheme.surfaceContainerHigh), Alignment.Center) {
                                 Icon(Icons.Outlined.Widgets, null, tint = scheme.onSurfaceVariant)
-                            } else CellContent(d, size, apps, s, dots, shown, ink, iconColors, resumeTick, homeIconSize(s, with(density) { cw.toDp() }, with(density) { ch.toDp() }), onLaunch, onMenu) {}
+                            } else CellContent(d, size, apps, s, dots, shown, ink, iconColors, resumeTick, homeIconSize(s, d.spanX, d.spanY, with(density) { cw.toDp() }, with(density) { ch.toDp() }), onLaunch, onMenu) {}
                         }
                     }
                 }
