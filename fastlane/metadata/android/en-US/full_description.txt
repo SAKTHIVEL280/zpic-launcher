@@ -1,0 +1,9 @@
+Zpic is a free, open-source home screen for Android that stays out of your way.
+
+* A fine home grid with pages, widgets, widget stacks, folders and a dock
+* Four app pages: names A to Z, icons, custom pages and smart groups
+* Themed icons for every app, including ones built from flat images
+* Material You colour, 12 clock options and 60 recolourable wallpapers
+* Focus modes on a schedule, a pause before distracting apps, and daily open counts
+* Search for apps, contacts, shortcuts and phone settings, with a calculator
+* No ads, no account and no internet permission
