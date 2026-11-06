@@ -1,0 +1,7 @@
+HSPLcom/zpic/launcher/**->**(**)**
+Lcom/zpic/launcher/**;
+HSPLandroidx/compose/runtime/**->**(**)**
+HSPLandroidx/compose/ui/**->**(**)**
+HSPLandroidx/compose/foundation/**->**(**)**
+HSPLandroidx/compose/animation/**->**(**)**
+HSPLandroidx/compose/material3/**->**(**)**
