@@ -1,0 +1,7 @@
+# Zpic Launcher
+
+> Free, open-source minimal Android launcher (Android 10+) with Material You colours, a grid home screen, a text-only A to Z app list, themed icons for every app, smart app groups, and no ads. Apache 2.0.
+
+- [Website](https://sakthivel280.github.io/zpic-launcher/)
+- [Source code](https://github.com/SAKTHIVEL280/zpic-launcher)
+- [Download](https://github.com/SAKTHIVEL280/zpic-launcher/releases/latest)

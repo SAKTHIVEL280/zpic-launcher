@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://sakthivel280.github.io/zpic-launcher/sitemap.xml
