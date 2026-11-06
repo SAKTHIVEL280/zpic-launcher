@@ -34,12 +34,12 @@ A free, open-source alternative to launchers like Nova, Niagara, Lawnchair and O
 | Colour | System colours (Material You, or tools such as ColorBlendr), directly from the wallpaper, or 6 fixed palettes; light/dark, pure black |
 | Motion | Expressive, Standard, Reduced; speed and bounce sliders; 4 app-open animations; haptics with a strength control |
 | Clock | Pixel stacked, Android inline, One UI slim, iOS bold, Nothing dot matrix, OxygenOS two-tone, HyperOS condensed, Material cards, analog, words, small, none. Size, weight, colour, hour format, leading zero, AM/PM, date format and position |
-| Home | Fine grid of up to 16 columns and 20 rows, multiple pages, widgets, folders, a dock, a notification shelf, undo, layout presets, a layout lock, and a hidden status bar option |
-| Search | Fuzzy app search, a calculator, and web fallback |
+| Home | Fine grid of up to 16 columns and 20 rows, multiple pages, widgets, folders, a dock, widget stacks, a notification shelf, a music player, undo, layout presets, shareable layouts, a layout lock, and a hidden status bar option |
+| Search | Apps, contacts, app shortcuts, phone settings, a calculator, and web fallback |
 | App pages | Names A to Z, icons with labels, custom pages (drag apps to any cell), smart groups. A separate Recent card with how long ago each app was used |
-| Icons | Full colour, Tonal, Surface, Glyph only, Monogram; 7 shapes; Nova/ADW icon packs |
+| Icons | Full colour, Tonal, Surface, Two-tone, Glyph only, Monogram; 7 shapes; Nova/ADW icon packs |
 | Wallpaper | 60 original designs, 10 in the spirit of each of Pixel, Nothing, One UI, iOS, OxygenOS and HyperOS. Tap one to set its colours, detail and light version. Or use a photo; apply to Home, Lock or both; keep the lock screen matched; dim |
-| Focus | Pause before distracting apps, hidden apps, notification dots |
+| Focus | Focus modes with schedules, a pause before distracting apps, daily open counts, hidden apps, notification dots |
 | Backup | Save and restore the whole setup as one JSON file |
 
 Icons drawn as flat PNG or JPG images are converted too: the logo is lifted off its plate and recoloured to match. If an icon has no usable logo, it becomes a monogram rather than a blank block.
@@ -52,7 +52,7 @@ Only the phone's own launcher may run the full shared app-open animation. Zpic u
 
 ## Permissions
 
-Off until you enable them: **Accessibility** (only to lock the screen) and **notification access** (only for dots).
+Off until you enable them: **Accessibility** (only to lock the screen), **notification access** (for dots, the shelf and the music player), **contacts** (for search) and **calendar** (for the next event line).
 Usage access is optional, for showing apps opened outside Zpic in Recent. `QUERY_ALL_PACKAGES` reads icon packs. `EXPAND_STATUS_BAR` uses a hidden API, so swipe-down could fail on a heavily modified ROM.
 
 ## Research behind the design

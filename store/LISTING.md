@@ -11,7 +11,7 @@ Zpic is a home screen that stays out of your way. It feels like stock Android, w
 - Themed icons for every app, even ones built from flat images
 - 12 clock styles, and 60 wallpapers you can recolour
 - Notification shelf, gestures, a dock, and a daily intention
-- A gentle pause before distracting apps
+- Focus modes and a gentle pause before distracting apps
 - No ads, no account, no tracking
 
 **Category:** Personalization
