@@ -3,7 +3,7 @@ package com.zpic.launcher.data
 import kotlinx.serialization.Serializable
 import kotlin.math.roundToInt
 
-enum class HomeKind { Clock, Pins, Intention, Widget, App, Folder, Shelf }
+enum class HomeKind { Clock, Pins, Intention, Widget, App, Folder, Shelf, Media }
 
 /** A rectangle of grid cells on one page. Items never overlap and always sit on the grid. */
 @Serializable
@@ -19,6 +19,7 @@ data class HomeCell(
     val app: String? = null,
     val apps: List<String> = emptyList(),
     val title: String = "",
+    val stack: List<Int> = emptyList(),
 ) {
     val resizable get() = kind != HomeKind.App && kind != HomeKind.Folder
 }
@@ -121,6 +122,11 @@ fun drop(items: List<HomeCell>, moved: HomeCell, cols: Int, rows: Int): List<Hom
             else -> Unit
         }
     }
+    if (moved.kind == HomeKind.Widget) {
+        val cx = at.col + at.spanX / 2; val cy = at.row + at.spanY / 2
+        val hit = rest.firstOrNull { it.kind == HomeKind.Widget && it.page == at.page && cx in it.col until it.col + it.spanX && cy in it.row until it.row + it.spanY }
+        if (hit != null) return rest.map { if (it.id == hit.id) it.copy(stack = it.stack + moved.widgetId + moved.stack) else it }
+    }
     if (isFree(rest, at)) return rest + at
     var best: HomeCell? = null
     var bestGap = Int.MAX_VALUE
@@ -193,4 +199,13 @@ fun applyPreset(items: List<HomeCell>, preset: HomePreset, cols: Int, rows: Int)
     }
     val kept = items.filter { it.kind == HomeKind.App || it.kind == HomeKind.Folder || it.kind == HomeKind.Widget }
     return fitted(shapes + kept, cols, rows)
+}
+
+/** Takes the last widget back out of a stack, into the nearest free spot. */
+fun unstack(items: List<HomeCell>, id: String, cols: Int, rows: Int): List<HomeCell> {
+    val c = items.firstOrNull { it.id == id } ?: return items
+    val last = c.stack.lastOrNull() ?: return items
+    val out = items.map { if (it.id == id) it.copy(stack = it.stack.dropLast(1)) else it }
+    val spot = findFree(out, c.spanX, c.spanY, c.page, Int.MAX_VALUE / 2, cols, rows) ?: return items
+    return out + HomeCell("w$last", HomeKind.Widget, spot.first, spot.second, spot.third, c.spanX, c.spanY, widgetId = last)
 }

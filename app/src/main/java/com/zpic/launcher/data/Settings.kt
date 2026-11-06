@@ -27,7 +27,7 @@ enum class HomeAlign { Start, Center, End }
 enum class FavStyle { Text, IconText, Icons }
 enum class DrawerMode { Text, Icons, Custom, Groups }
 enum class RailSide { End, Start, Off }
-enum class IconStyle { System, Tonal, Surface, Ghost, Monogram }
+enum class IconStyle { System, Tonal, Surface, TwoTone, Ghost, Monogram }
 enum class AppAnim { Scale, Rise, Reveal, System }
 enum class GlyphInk { Theme, White }
 enum class IconOverride { Auto, Glyph, Monogram, Original }
@@ -122,6 +122,16 @@ data class Settings(
     val recents: List<RecentUse> = emptyList(),
     val recentsFromSystem: Boolean = false,
     val onboarded: Boolean = false,
+    val sharedLayout: Boolean = false,
+    val drawerFolders: List<DrawerFolder> = emptyList(),
+    val modes: List<FocusMode> = defaultModes,
+    val manualMode: String? = null,
+    val openCounts: Map<String, Int> = emptyMap(),
+    val countsDay: Int = 0,
+    val openNudge: Int = 0,
+    val appDouble: Map<String, String> = emptyMap(),
+    val searchContacts: Boolean = false,
+    val calendarGlance: Boolean = false,
 )
 
 private val Context.store by preferencesDataStore("zpic")
@@ -141,10 +151,11 @@ class SettingsRepo(private val context: Context, private val scope: CoroutineSco
     }
 
     fun export(): String = SettingsJson.encodeToString(Settings.serializer(), state.value)
+    fun exportLayout(): String = SettingsJson.encodeToString(Settings.serializer(), shareable(state.value))
 
     fun import(json: String): Boolean {
         val parsed = decode(json) ?: return false
-        update { parsed }
+        update { if (parsed.sharedLayout) applyShared(it, parsed) else parsed }
         return true
     }
 
