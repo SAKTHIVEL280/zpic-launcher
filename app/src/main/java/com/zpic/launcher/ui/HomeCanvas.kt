@@ -57,6 +57,7 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.DriveFileRenameOutline
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Remove
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Tune
@@ -124,6 +125,7 @@ import com.zpic.launcher.data.gridOf
 import com.zpic.launcher.data.label
 import com.zpic.launcher.data.removePage
 import com.zpic.launcher.data.resizedCell
+import com.zpic.launcher.data.unstack
 import com.zpic.launcher.data.withoutFromFolder
 import com.zpic.launcher.icons.IconColors
 import com.zpic.launcher.system.SystemActions
@@ -183,11 +185,25 @@ class HomeEditor {
     fun close() { editing = false; selected = null; dragged = null; resizing = null }
 }
 
+/** One widget, or a stack of them you swipe through. */
 @Composable
 private fun WidgetCell(cell: HomeCell, box: DpSize) {
+    val ids = listOf(cell.widgetId) + cell.stack
+    if (ids.size == 1) { OneWidget(cell.widgetId, box); return }
+    val pager = rememberPagerState { ids.size }
+    Box(Modifier.fillMaxSize()) {
+        HorizontalPager(pager, Modifier.fillMaxSize(), userScrollEnabled = !LocalHomeEditing.current) { OneWidget(ids[it], box) }
+        Row(Modifier.align(Alignment.BottomCenter).padding(bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            repeat(ids.size) { i -> Spacer(Modifier.size(5.dp).clip(CircleShape).background(Color.White.copy(alpha = if (pager.currentPage == i) .9f else .4f))) }
+        }
+    }
+}
+
+@Composable
+private fun OneWidget(id: Int, box: DpSize) {
     val context = LocalContext.current
     val app = context.applicationContext as ZpicApp
-    val info = remember(cell.widgetId) { AppWidgetManager.getInstance(context).getAppWidgetInfo(cell.widgetId) }
+    val info = remember(id) { AppWidgetManager.getInstance(context).getAppWidgetInfo(id) }
     if (info == null) {
         Box(Modifier.fillMaxSize().clip(RoundedCornerShape(24.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh), Alignment.Center) {
             Text("Widget unavailable", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
@@ -196,7 +212,7 @@ private fun WidgetCell(cell: HomeCell, box: DpSize) {
     }
     AndroidView(
         factory = { c ->
-            app.widgetHost.createView(c.applicationContext, cell.widgetId, info).apply {
+            app.widgetHost.createView(c.applicationContext, id, info).apply {
                 layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
             }
         },
@@ -274,7 +290,10 @@ private fun CellContent(
         else if (editing) Text("Today's intention", color = ink.copy(alpha = .7f), fontSize = 13.sp)
         HomeKind.Pins -> PinnedApps(apps, s, dots, ink, colors, box, onLaunch)
         HomeKind.Widget -> WidgetCell(cell, box)
-        HomeKind.App -> apps.firstOrNull { it.key == cell.app }?.let { a -> SingleApp(a, s, s.dots && a.packageName in dots, ink, colors, icon, onLaunch) }
+        HomeKind.App -> apps.firstOrNull { it.key == cell.app }?.let { a ->
+            SingleApp(a, s, s.dots && a.packageName in dots, ink, colors, icon, onLaunch, s.appDouble[a.key]?.let { k -> apps.firstOrNull { it.key == k } })
+        }
+        HomeKind.Media -> FitBox(2f, alignX = .5f) { MediaCell() }
         HomeKind.Folder -> FolderTile(cell, apps, s, ink, colors, icon) { onFolder(cell) }
         HomeKind.Shelf -> FitBox(2f, alignX = .5f) { NotificationShelf(waiting, s, colors, onLaunch) }
     }
@@ -486,7 +505,7 @@ private fun PageChip(icon: ImageVector, label: String, on: Boolean = false, onCl
 }
 
 @Composable
-private fun FolderPopup(cell: HomeCell, apps: List<AppEntry>, s: Settings, colors: IconColors, editing: Boolean, onLaunch: Launch, onRemove: (String) -> Unit, onRename: (String) -> Unit, onClose: () -> Unit) {
+internal fun FolderPopup(cell: HomeCell, apps: List<AppEntry>, s: Settings, colors: IconColors, editing: Boolean, onLaunch: Launch, onRemove: (String) -> Unit, onRename: (String) -> Unit, onClose: () -> Unit) {
     val scheme = MaterialTheme.colorScheme
     val motion = LocalMotion.current
     val haptics = LocalHaptics.current
@@ -542,7 +561,7 @@ fun RenameDialog(title: String, onDismiss: () -> Unit, onSave: (String) -> Unit)
 @Composable
 fun HomePages(
     apps: List<AppEntry>, s: Settings, dots: Set<String>, waiting: List<WaitingApp>, ink: Color, iconColors: IconColors, resumeTick: Int,
-    home: Int, editor: HomeEditor, onLaunch: Launch, onMenu: (AppEntry) -> Unit,
+    home: Int, modePage: Int, editor: HomeEditor, onLaunch: Launch, onMenu: (AppEntry) -> Unit,
     onAddWidget: (Int) -> Unit, onWallpaper: () -> Unit, onCustomize: () -> Unit, onSettingsPage: (String) -> Unit, onConfigure: (HomeCell) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -557,6 +576,7 @@ fun HomePages(
     val pages = (items.maxOfOrNull { it.page + 1 } ?: 1).coerceAtLeast(s.homePages)
     val pager = rememberPagerState(initialPage = s.homeMain.coerceIn(0, pages - 1)) { pages }
     fun save(next: List<HomeCell>) = repo.update { it.copy(grid = next) }
+    LaunchedEffect(modePage) { if (modePage in 0 until pages) pager.animateScrollToPage(modePage, animationSpec = motion.settle()) }
     LaunchedEffect(home) { if (home > 0) pager.animateScrollToPage(s.homeMain.coerceIn(0, pages - 1), animationSpec = motion.settle()) }
     BackHandler(editor.editing) { editor.close() }
 
@@ -584,7 +604,7 @@ fun HomePages(
     LaunchedEffect(undoTick) {
         val c = undo ?: return@LaunchedEffect
         delay(5000)
-        if (c.kind == HomeKind.Widget) app.widgetHost.deleteAppWidgetId(c.widgetId)
+        if (c.kind == HomeKind.Widget) (c.stack + c.widgetId).forEach { app.widgetHost.deleteAppWidgetId(it) }
         undo = null
     }
     val pillFor = { c: HomeCell ->
@@ -594,7 +614,11 @@ fun HomePages(
                 HomeKind.Pins -> add(Triple(Icons.Outlined.Edit, "Edit") { editor.close(); onSettingsPage("Home screen") })
                 HomeKind.Intention -> add(Triple(Icons.Outlined.Edit, "Edit") { editor.close(); onSettingsPage("Home screen") })
                 HomeKind.Shelf -> add(Triple(Icons.Outlined.Tune, "Options") { editor.close(); onSettingsPage("Focus") })
-                HomeKind.Widget -> if (AppWidgetManager.getInstance(context).getAppWidgetInfo(c.widgetId)?.configure != null) add(Triple(Icons.Outlined.Tune, "Setup") { onConfigure(c) })
+                HomeKind.Widget -> {
+                    if (c.stack.isNotEmpty()) add(Triple(Icons.Outlined.Remove, "Unstack") { save(unstack(current.value, c.id, s.homeColumns, s.homeRows)) })
+                    if (AppWidgetManager.getInstance(context).getAppWidgetInfo(c.widgetId)?.configure != null) add(Triple(Icons.Outlined.Tune, "Setup") { onConfigure(c) })
+                }
+                HomeKind.Media -> Unit
                 HomeKind.Folder -> add(Triple(Icons.Outlined.DriveFileRenameOutline, "Rename") { renaming = c })
                 HomeKind.App -> apps.firstOrNull { it.key == c.app }?.let { a -> add(Triple(Icons.Outlined.Info, "Options") { onMenu(a) }) }
             }

@@ -11,6 +11,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -131,13 +132,13 @@ private fun PinnedRow(
 
 /** One home cell: icon and optional label, sized to the cell so nothing can ever overlap. */
 @Composable
-fun SingleApp(app: AppEntry, settings: Settings, dot: Boolean, ink: Color, colors: IconColors, icon: Int, onLaunch: Launch) {
+fun SingleApp(app: AppEntry, settings: Settings, dot: Boolean, ink: Color, colors: IconColors, icon: Int, onLaunch: Launch, second: AppEntry? = null) {
     val source = remember { MutableInteractionSource() }
     val pressed by source.collectIsPressedAsState()
     val coords = remember { arrayOfNulls<LayoutCoordinates>(1) }
     Column(
         Modifier.fillMaxSize().onGloballyPositioned { coords[0] = it }
-            .clickable(source, null, enabled = !LocalHomeEditing.current) { onLaunch(app, coords[0]?.toRect()) },
+            .combinedClickable(source, null, enabled = !LocalHomeEditing.current, onDoubleClick = second?.let { s -> { onLaunch(s, coords[0]?.toRect()) } }) { onLaunch(app, coords[0]?.toRect()) },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {

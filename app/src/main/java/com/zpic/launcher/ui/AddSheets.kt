@@ -17,6 +17,7 @@ import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Subject
 import androidx.compose.material.icons.outlined.ViewList
+import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -123,6 +124,7 @@ fun AddToHomeSheet(apps: List<AppEntry>, s: Settings, items: List<HomeCell>, pag
                 ElementRow(Icons.Outlined.ViewList, "Pinned list", "Your pinned apps as a tidy list", items.any { it.kind == HomeKind.Pins }) { element(HomeKind.Pins, newId("pins"), (s.homeColumns * 3 / 5).coerceAtLeast(2), s.homeRows / 3) }
                 ElementRow(Icons.Outlined.Subject, "Today's intention", "The line you set in Settings", items.any { it.kind == HomeKind.Intention }) { element(HomeKind.Intention, newId("int"), s.homeColumns, appSpanY(s.homeRows)) }
                 ElementRow(Icons.Outlined.Notifications, "Notification shelf", "Apps with something waiting", items.any { it.kind == HomeKind.Shelf }) { element(HomeKind.Shelf, newId("shelf"), appSpanX(s.homeColumns), appSpanY(s.homeRows) * 2) }
+                ElementRow(Icons.Outlined.MusicNote, "Music player", "Controls while something plays", items.any { it.kind == HomeKind.Media }) { element(HomeKind.Media, newId("media"), s.homeColumns, appSpanY(s.homeRows)) }
                 ElementRow(Icons.Outlined.ViewList, "Dock", "A fixed row of apps on every page", s.showDock && s.dock.isNotEmpty(), onDock)
             }
         }
