@@ -92,6 +92,20 @@ class HomeLayoutTest {
         assertEquals(1, com.zpic.launcher.data.withShelf(on, false, 0, 5, 6).size)
     }
 
+    @Test fun oldCoarseLayoutsConvertWithoutMoving() {
+        val old = Settings(grid = listOf(clock), homeColumns = 10, homeRows = 12)
+        val c = com.zpic.launcher.data.migrateGrid(old).grid!!.single()
+        assertEquals(0, c.col); assertEquals(4, c.row); assertEquals(6, c.spanX); assertEquals(4, c.spanY)
+        val once = com.zpic.launcher.data.migrateGrid(old)
+        assertEquals(once, com.zpic.launcher.data.migrateGrid(once))
+    }
+
+    @Test fun droppingOnAWideIconStillMakesAFolder() {
+        val big = a.copy(spanX = 2, spanY = 2); val other = b.copy(col = 2, spanX = 2, spanY = 2)
+        val out = drop(listOf(big, other), big.copy(col = 1), 10, 12)
+        assertEquals(HomeKind.Folder, out.single().kind)
+    }
+
     @Test fun freshHomeIsValid() {
         assertTrue(noOverlaps(gridOf(Settings(widgetId = 7))))
     }
