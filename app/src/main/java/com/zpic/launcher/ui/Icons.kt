@@ -81,6 +81,7 @@ fun rememberIconColors(ink: Color, glyph: GlyphInk = GlyphInk.Theme, onWallpaper
             c.primaryContainer.toArgb(), c.onPrimaryContainer.toArgb(),
             c.surfaceContainerHigh.toArgb(), c.primary.toArgb(),
             (if (glyph == GlyphInk.White) mono else themed).toArgb(),
+            c.tertiaryContainer.toArgb(), c.primary.toArgb(), c.tertiary.toArgb(),
         )
     }
 }

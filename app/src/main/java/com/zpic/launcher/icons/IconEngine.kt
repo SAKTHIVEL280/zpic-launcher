@@ -27,7 +27,7 @@ import kotlinx.coroutines.withContext
 import org.xmlpull.v1.XmlPullParser
 import kotlin.math.min
 
-data class IconColors(val tonalBg: Int, val tonalFg: Int, val surfaceBg: Int, val surfaceFg: Int, val ghostFg: Int)
+data class IconColors(val tonalBg: Int, val tonalFg: Int, val surfaceBg: Int, val surfaceFg: Int, val ghostFg: Int, val duoBg: Int = 0, val duoA: Int = 0, val duoB: Int = 0)
 
 /** Identifies an installed ADW/Nova-format icon pack. */
 data class IconPackInfo(val packageName: String, val label: String)
@@ -80,11 +80,14 @@ class IconEngine(private val context: Context) {
         val (bg, fg) = when (style) {
             IconStyle.Surface -> c.surfaceBg to c.surfaceFg
             IconStyle.Ghost -> Color.TRANSPARENT to c.ghostFg
+            IconStyle.TwoTone -> c.duoBg to c.duoA
             else -> c.tonalBg to c.tonalFg
         }
         val out = createBitmap(s, s)
         val canvas = Canvas(out)
         canvas.drawColor(bg)
+        // Two-tone paints the glyph on its own layer, so the gradient touches only the logo.
+        val layer = if (style == IconStyle.TwoTone) canvas.saveLayer(null, null) else -1
         val mono = (icon as? AdaptiveIconDrawable)?.takeIf { Build.VERSION.SDK_INT >= 33 }?.monochrome
         if (mono != null) {
             val m = mono.mutate()
@@ -95,6 +98,14 @@ class IconEngine(private val context: Context) {
             val glyph = derivedGlyph(icon, s, fg)
             if (glyph != null) canvas.drawBitmap(glyph, 0f, 0f, null)
             else return monogram(label, s, c, bg, fg)
+        }
+        if (layer >= 0) {
+            val paint = Paint().apply {
+                shader = android.graphics.LinearGradient(0f, 0f, s.toFloat(), s.toFloat(), c.duoA, c.duoB, android.graphics.Shader.TileMode.CLAMP)
+                xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.SRC_IN)
+            }
+            canvas.drawRect(0f, 0f, s.toFloat(), s.toFloat(), paint)
+            canvas.restoreToCount(layer)
         }
         return out
     }
