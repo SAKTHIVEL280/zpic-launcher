@@ -293,14 +293,15 @@ fun CustomPages(
                                                     repo.update { it.copy(customSlots = moveApp(latest, a.key, to)) }
                                                 }
                                             },
-                                            onDragCancel = { dragging = null },
+                                            // Lifting the app rebuilds the pager, which can end a held touch as a cancel.
+                                            onDragCancel = { val still = !moved; dragging = null; if (still) onMenu(a) },
                                         ) { change, delta ->
                                             change.consume()
                                             pointer += delta
                                             if (delta.getDistance() > 1f) moved = true
                                         }
                                     }
-                                    .clickable(source, null) { onLaunch(a, coords[0]?.toRect()) },
+                                    .clickable(source, null, enabled = dragging == null) { onLaunch(a, coords[0]?.toRect()) },
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.Center,
                             ) {

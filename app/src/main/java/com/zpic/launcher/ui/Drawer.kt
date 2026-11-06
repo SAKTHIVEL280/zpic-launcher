@@ -88,7 +88,11 @@ import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zpic.launcher.data.AppEntry
+import com.zpic.launcher.ZpicApp
+import com.zpic.launcher.data.DrawerFolder
 import com.zpic.launcher.data.DrawerMode
+import com.zpic.launcher.data.HomeCell
+import com.zpic.launcher.data.HomeKind
 import com.zpic.launcher.data.RailSide
 import com.zpic.launcher.data.Settings
 import com.zpic.launcher.data.evalMath
@@ -131,9 +135,11 @@ fun AppDrawer(
     var query by remember { mutableStateOf("") }
     var touched by remember { mutableStateOf<Char?>(null) }
     val isSearching = query.isNotBlank()
+    var openFolder by remember { mutableStateOf<DrawerFolder?>(null) }
 
-    val visible = remember(apps, settings.hidden, settings.renamed) {
+    val visible = remember(apps, settings.hidden, settings.renamed, settings.drawerFolders, isSearching) {
         apps.filter { it.key !in settings.hidden }
+            .filter { a -> isSearching || settings.drawerFolders.none { a.key in it.apps } }
             .map { it to it.label(settings) }
             .sortedWith(compareBy<Pair<AppEntry, String>> { sectionOf(it.second).let { c -> if (c == '#') '\u0000' else c } }.thenBy { it.second.lowercase() })
     }
@@ -257,12 +263,15 @@ fun AppDrawer(
         Column(Modifier.fillMaxSize().imePadding()) {
             Box(Modifier.weight(1f).fillMaxWidth().nestedScroll(nested).then(fade)) {
                 val progress = { controller.value }
-                val header: @Composable () -> Unit = {
+                // One list slot holds all of these, so they must stack or they'd draw over each other.
+                val header: @Composable () -> Unit = { Column(Modifier.fillMaxWidth()) {
                     if (settings.suggestions && !isSearching) RecentsRow(recent, settings, iconColors, onLaunch, onMenu)
                     if (isSearching) evalMath(query)?.let { MathRow(formatNumber(it)) }
+                    if (isSearching) SearchExtras(query, settings)
+                    if (!isSearching && settings.drawerFolders.isNotEmpty()) FolderRow(settings) { openFolder = it }
                     if (isSearching && results.isEmpty()) NoResults(query, onSearchWeb)
                     else if (isSearching) WebRow(query, onSearchWeb)
-                }
+                                } }
                 when {
                     !isSearching && pages == DrawerMode.Custom -> CustomPages(apps.filter { it.key !in settings.hidden }, settings, dots, iconColors, controller, statusPad.calculateTopPadding(), onLaunch, onMenu)
                     !isSearching && pages == DrawerMode.Groups -> GroupsPage(apps.filter { it.key !in settings.hidden }, settings, dots, iconColors, contentPad, header, onLaunch, onMenu)
@@ -278,6 +287,18 @@ fun AppDrawer(
                 query, { query = it }, focus,
                 onSubmit = { results.firstOrNull()?.let { onLaunch(it.first, null) } ?: if (query.isNotBlank()) onSearchWeb(query) else Unit },
                 onSettings = onSettings,
+            )
+        }
+        // Last, so it draws above the list.
+        openFolder?.let { f ->
+            val repo = (LocalContext.current.applicationContext as ZpicApp).settings
+            val live = settings.drawerFolders.firstOrNull { it.id == f.id }
+            if (live == null) openFolder = null
+            else FolderPopup(
+                HomeCell(live.id, HomeKind.Folder, col = 0, row = 0, apps = live.apps, title = live.title), apps, settings, iconColors, false, onLaunch,
+                onRemove = { key -> repo.update { s -> s.copy(drawerFolders = s.drawerFolders.mapNotNull { d -> if (d.id != live.id) d else d.copy(apps = d.apps - key).takeIf { it.apps.isNotEmpty() } }) } },
+                onRename = { t -> repo.update { s -> s.copy(drawerFolders = s.drawerFolders.map { if (it.id == live.id) it.copy(title = t) else it }) } },
+                onClose = { openFolder = null },
             )
         }
     }
@@ -385,6 +406,16 @@ internal fun GridCell(
             label, color = tint, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(top = 6.dp, start = 4.dp, end = 4.dp),
         )
+    }
+}
+
+@Composable
+private fun FolderRow(s: Settings, onOpen: (DrawerFolder) -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp).padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        s.drawerFolders.forEach { f ->
+            Text("${f.title}  ${f.apps.size}", Modifier.clip(CircleShape).background(scheme.secondaryContainer).combinedClickable { onOpen(f) }.padding(horizontal = 16.dp, vertical = 10.dp), color = scheme.onSecondaryContainer, fontSize = 14.sp, maxLines = 1)
+        }
     }
 }
 

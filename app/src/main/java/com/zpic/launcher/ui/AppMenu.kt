@@ -7,6 +7,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -20,6 +21,8 @@ import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.SelfImprovement
 import androidx.compose.material.icons.outlined.ArrowOutward
 import androidx.compose.material.icons.outlined.AutoFixHigh
+import androidx.compose.material.icons.outlined.CreateNewFolder
+import androidx.compose.material.icons.outlined.TouchApp
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.AlertDialog
@@ -32,6 +35,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,7 +45,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.zpic.launcher.ZpicApp
 import com.zpic.launcher.data.AppEntry
+import com.zpic.launcher.data.DrawerFolder
+import com.zpic.launcher.data.newId
 import com.zpic.launcher.data.IconOverride
 import com.zpic.launcher.data.AppGroup
 import com.zpic.launcher.data.group
@@ -72,6 +79,9 @@ fun AppMenu(app: AppEntry, settings: Settings, repo: SettingsRepo, onPlace: ((Ap
     var renaming by remember { mutableStateOf(false) }
     var moving by remember { mutableStateOf(false) }
     var styling by remember { mutableStateOf(false) }
+    var foldering by remember { mutableStateOf(false) }
+    var doubling by remember { mutableStateOf(false) }
+    val allApps by (context.applicationContext as ZpicApp).apps.apps.collectAsState()
     val shortcutList = remember(app) { shortcuts(context, app) }
     val done = onDismiss
     val colors = rememberIconColors(MaterialTheme.colorScheme.onSurface, settings.glyphInk)
@@ -95,6 +105,9 @@ fun AppMenu(app: AppEntry, settings: Settings, repo: SettingsRepo, onPlace: ((Ap
             }
             onPlace?.let { place -> Item(Icons.Outlined.Home, "Add to home screen") { place(app); done() } }
             Item(Icons.Outlined.DriveFileRenameOutline, "Rename") { renaming = true }
+            Item(Icons.Outlined.CreateNewFolder, "Add to app page folder") { foldering = true }
+            val second = settings.appDouble[app.key]?.let { k -> allApps.firstOrNull { it.key == k } }
+            Item(Icons.Outlined.TouchApp, if (second != null) "Double-tap opens ${second.label(settings)}" else "Double-tap on home opens…") { doubling = true }
             val look = settings.iconOverrides[app.key] ?: IconOverride.Auto
             Item(Icons.Outlined.AutoFixHigh, "Icon: ${look.title()}") { styling = true }
             val flagged = app.key in settings.distracting
@@ -113,6 +126,44 @@ fun AppMenu(app: AppEntry, settings: Settings, repo: SettingsRepo, onPlace: ((Ap
             }
             Item(Icons.Outlined.Delete, "Uninstall") { SystemActions.uninstall(context, app); done() }
         }
+    }
+    if (doubling) AlertDialog(
+        onDismissRequest = { doubling = false },
+        title = { Text("Double-tap opens") },
+        confirmButton = { TextButton({ repo.update { it.copy(appDouble = it.appDouble - app.key) }; doubling = false; done() }) { Text("Nothing") } },
+        text = {
+            Column(Modifier.heightIn(max = 380.dp).verticalScroll(rememberScrollState())) {
+                allApps.filter { it.key != app.key }.forEach { a ->
+                    Text(a.label(settings), Modifier.fillMaxWidth().clickable { repo.update { it.copy(appDouble = it.appDouble + (app.key to a.key)) }; doubling = false; done() }.padding(vertical = 12.dp))
+                }
+            }
+        },
+    )
+    if (foldering) {
+        var name by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { foldering = false },
+            title = { Text("App page folder") },
+            text = {
+                Column {
+                    settings.drawerFolders.forEach { f ->
+                        Text(f.title, Modifier.fillMaxWidth().clickable {
+                            repo.update { s -> s.copy(drawerFolders = s.drawerFolders.map { if (it.id == f.id) it.copy(apps = (it.apps + app.key).distinct()) else it.copy(apps = it.apps - app.key) }.filter { it.apps.isNotEmpty() }) }
+                            foldering = false; done()
+                        }.padding(vertical = 12.dp))
+                    }
+                    OutlinedTextField(name, { name = it }, singleLine = true, modifier = Modifier.fillMaxWidth(), label = { Text("New folder") })
+                }
+            },
+            confirmButton = {
+                TextButton({
+                    val t = name.trim()
+                    if (t.isNotEmpty()) repo.update { s -> s.copy(drawerFolders = s.drawerFolders.map { it.copy(apps = it.apps - app.key) }.filter { it.apps.isNotEmpty() } + DrawerFolder(newId("d"), t, listOf(app.key))) }
+                    foldering = false; done()
+                }) { Text("Create") }
+            },
+            dismissButton = { TextButton({ foldering = false }) { Text("Cancel") } },
+        )
     }
     if (styling) AlertDialog(
         onDismissRequest = { styling = false },
