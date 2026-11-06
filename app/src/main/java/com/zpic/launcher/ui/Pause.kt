@@ -37,7 +37,7 @@ import kotlinx.coroutines.delay
 
 /** A speed bump, not a wall: the app always opens if the person still wants it after a breath. */
 @Composable
-fun PauseOverlay(label: String, seconds: Int, onOpen: () -> Unit, onCancel: () -> Unit) {
+fun PauseOverlay(label: String, seconds: Int, opensToday: Int, onOpen: () -> Unit, onCancel: () -> Unit) {
     BackHandler(onBack = onCancel)
     val colors = MaterialTheme.colorScheme
     var left by remember { mutableIntStateOf(seconds) }
@@ -70,6 +70,7 @@ fun PauseOverlay(label: String, seconds: Int, onOpen: () -> Unit, onCancel: () -
         Text("Take a breath", style = MaterialTheme.typography.headlineMedium, color = colors.onSurface)
         Spacer(Modifier.height(8.dp))
         Text("Do you still want to open $label?", style = MaterialTheme.typography.bodyLarge, color = colors.onSurfaceVariant)
+        if (opensToday > 0) Text(if (opensToday == 1) "Opened once today" else "Opened $opensToday times today", Modifier.padding(top = 8.dp), style = MaterialTheme.typography.titleMedium, color = colors.primary)
         Spacer(Modifier.height(48.dp))
         Button(onCancel, Modifier.fillMaxWidth()) { Text("Not now") }
         TextButton(onOpen, Modifier.fillMaxWidth(), enabled = left == 0) { Text(if (left > 0) "Open in ${left}s" else "Open $label") }

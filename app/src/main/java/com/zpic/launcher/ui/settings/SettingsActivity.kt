@@ -1,5 +1,6 @@
 package com.zpic.launcher.ui.settings
 
+import android.Manifest
 import android.app.Activity
 import android.content.ComponentName
 import android.content.Intent
@@ -313,7 +314,7 @@ private fun Welcome(s: Settings, up: Up) {
         }, onPick = { v -> up { it.copy(drawerMode = v) } })
     }
     Group("2. Your icons") {
-        Choice("Icon style", IconStyle.entries, s.iconStyle, { when (it) { IconStyle.System -> "Full colour"; IconStyle.Tonal -> "Tonal"; IconStyle.Surface -> "Surface"; IconStyle.Ghost -> "Glyph only"; IconStyle.Monogram -> "Monogram" } }, onPick = { v -> up { it.copy(iconStyle = v) } })
+        Choice("Icon style", IconStyle.entries, s.iconStyle, { when (it) { IconStyle.System -> "Full colour"; IconStyle.Tonal -> "Tonal"; IconStyle.Surface -> "Surface"; IconStyle.TwoTone -> "Two-tone"; IconStyle.Ghost -> "Glyph only"; IconStyle.Monogram -> "Monogram" } }, onPick = { v -> up { it.copy(iconStyle = v) } })
     }
     Group("3. Make it home") {
         Note("Set Zpic as your home app", "You can change this any time.") {
@@ -448,6 +449,13 @@ private fun Note(title: String, hint: String? = null, content: (@Composable () -
     }
 }
 
+/** Asks for the permission when switched on, and stays off if it's refused. */
+@Composable
+private fun PermissionToggle(title: String, hint: String, permission: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { onChange(it) }
+    Toggle(title, hint, checked) { v -> if (v) ask.launch(permission) else onChange(false) }
+}
+
 @Composable
 private fun Look(s: Settings, up: Up) {
     Group("Colour") {
@@ -530,6 +538,7 @@ private fun ClockPage(s: Settings, up: Up) {
             Toggle("Date above the clock", null, s.dateAbove) { v -> up { it.copy(dateAbove = v) } }
         }
         Toggle("Next alarm", null, s.showAlarm) { v -> up { it.copy(showAlarm = v) } }
+        PermissionToggle("Next calendar event", "Stays on your phone", Manifest.permission.READ_CALENDAR, s.calendarGlance) { v -> up { it.copy(calendarGlance = v) } }
         Toggle("Battery level", null, s.showBattery) { v -> up { it.copy(showBattery = v) } }
     }
 }
@@ -638,6 +647,7 @@ private fun AppsPage(s: Settings, up: Up) {
         }
     }
     Group("Search") {
+        PermissionToggle("Search contacts", "Stays on your phone", Manifest.permission.READ_CONTACTS, s.searchContacts) { v -> up { it.copy(searchContacts = v) } }
         Toggle("Open keyboard with apps", "Start typing as soon as the page opens", s.autoKeyboard) { v -> up { it.copy(autoKeyboard = v) } }
         Toggle("Open the only match", "Launch as soon as search finds one app", s.autoLaunch) { v -> up { it.copy(autoLaunch = v) } }
     }
@@ -661,6 +671,7 @@ private fun IconsPage(s: Settings, up: Up) {
                 IconStyle.System -> "Full colour"
                 IconStyle.Tonal -> "Tonal"
                 IconStyle.Surface -> "Surface"
+                IconStyle.TwoTone -> "Two-tone"
                 IconStyle.Ghost -> "Glyph only"
                 IconStyle.Monogram -> "Monogram"
             }
@@ -882,6 +893,24 @@ private fun FocusPage(s: Settings, up: Up) {
         }
         Range("Length", s.pauseSeconds.toFloat(), 3f..20f, 16, { "${it.toInt()} s" }) { v -> up { it.copy(pauseSeconds = v.toInt()) } }
     }
+    Group("Daily opens") {
+        Range("Pause after this many opens a day", s.openNudge.toFloat(), 0f..30f, 29, { if (it < 1f) "Off" else "${it.toInt()}" }) { v -> up { it.copy(openNudge = v.toInt()) } }
+    }
+    Group("Focus modes") {
+        s.modes.forEach { m ->
+            Toggle(m.name, "${m.hidden.size} apps hidden" + if (m.startHour >= 0) ", ${m.startHour}:00 to ${m.endHour}:00" else "", s.manualMode == m.id) { v -> up { it.copy(manualMode = if (v) m.id else null) } }
+            Note("${m.name} options") {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilledTonalButton({ chooser = "mode:${m.id}" }) { Text("Hide apps") }
+                    FilledTonalButton({ up { it.copy(modes = it.modes.map { x -> if (x.id == m.id) x.copy(startHour = if (m.startHour >= 0) -1 else if (m.id == "sleep") 22 else 9, endHour = if (m.startHour >= 0) -1 else if (m.id == "sleep") 7 else 18) else x }) } }) { Text(if (m.startHour >= 0) "No schedule" else "Add schedule") }
+                }
+            }
+            if (m.startHour >= 0) {
+                Range("${m.name} starts", m.startHour.toFloat(), 0f..23f, 22, { "${it.toInt()}:00" }) { v -> up { it.copy(modes = it.modes.map { x -> if (x.id == m.id) x.copy(startHour = v.toInt()) else x }) } }
+                Range("${m.name} ends", m.endHour.toFloat(), 0f..23f, 22, { "${it.toInt()}:00" }) { v -> up { it.copy(modes = it.modes.map { x -> if (x.id == m.id) x.copy(endHour = v.toInt()) else x }) } }
+            }
+        }
+    }
     Group("Hidden apps") {
         Note("Gone from the list and search", "They stay installed.") {
             FilledTonalButton({ chooser = "hide" }) { Text("Choose apps (${s.hidden.size})") }
@@ -910,10 +939,10 @@ private fun FocusPage(s: Settings, up: Up) {
         }
     }
     chooser?.let { mode ->
-        val picked = remember { mutableStateListOf<String>().apply { addAll(when (mode) { "pause" -> s.distracting; "shelf" -> s.shelfExcluded; else -> s.hidden }) } }
+        val picked = remember { mutableStateListOf<String>().apply { addAll(when { mode == "pause" -> s.distracting; mode == "shelf" -> s.shelfExcluded; mode.startsWith("mode:") -> s.modes.firstOrNull { it.id == mode.drop(5) }?.hidden.orEmpty(); else -> s.hidden }) } }
         AlertDialog(
             onDismissRequest = { chooser = null },
-            title = { Text(when (mode) { "pause" -> "Pause before opening"; "shelf" -> "Leave out of the shelf"; else -> "Hidden apps" }) },
+            title = { Text(when { mode == "pause" -> "Pause before opening"; mode == "shelf" -> "Leave out of the shelf"; mode.startsWith("mode:") -> "Hide during this mode"; else -> "Hidden apps" }) },
             text = {
                 LazyColumn(Modifier.height(380.dp)) {
                     items(apps, key = { it.key }) { a ->
@@ -931,7 +960,7 @@ private fun FocusPage(s: Settings, up: Up) {
             confirmButton = {
                 TextButton({
                     val set = picked.toSet()
-                    up { when (mode) { "pause" -> it.copy(distracting = set); "shelf" -> it.copy(shelfExcluded = set); else -> it.copy(hidden = set, favorites = it.favorites - set) } }
+                    up { when { mode == "pause" -> it.copy(distracting = set); mode == "shelf" -> it.copy(shelfExcluded = set); mode.startsWith("mode:") -> it.copy(modes = it.modes.map { x -> if (x.id == mode.drop(5)) x.copy(hidden = set) else x }); else -> it.copy(hidden = set, favorites = it.favorites - set) } }
                     chooser = null
                 }) { Text("Done") }
             },
@@ -954,6 +983,22 @@ private fun BackupPage() {
         if (uri != null) {
             val ok = runCatching { app.settings.import(context.contentResolver.openInputStream(uri)!!.bufferedReader().readText()) }.getOrDefault(false)
             SystemActions.toast(context, if (ok) "Setup restored" else "That file isn't a Zpic setup")
+        }
+    }
+    Group("Share your layout") {
+        Note("Send your look to someone", "Includes your arrangement and style. Leaves out your apps, hidden list and anything personal.") {
+            FilledTonalButton({
+                val dir = java.io.File(context.cacheDir, "wallpapers").apply { mkdirs() }
+                val file = java.io.File(dir, "zpic-layout.json").apply { writeText(app.settings.exportLayout()) }
+                val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.files", file)
+                SystemActions.start(context, Intent.createChooser(Intent(Intent.ACTION_SEND).setType("application/json").putExtra(Intent.EXTRA_STREAM, uri).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Share layout"))
+            }) { Text("Share layout") }
+        }
+    }
+    Group("Updates") {
+        val version = remember { context.packageManager.getPackageInfo(context.packageName, 0).versionName }
+        Note("Version $version", "Zpic has no internet access, so updates open in your browser.") {
+            FilledTonalButton({ SystemActions.start(context, Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/SAKTHIVEL280/zpic-launcher/releases/latest"))) }) { Text("Check for updates") }
         }
     }
     Group("Your setup, in one file") {

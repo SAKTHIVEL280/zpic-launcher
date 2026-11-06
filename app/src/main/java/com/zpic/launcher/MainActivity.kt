@@ -48,7 +48,9 @@ import com.zpic.launcher.data.AppAnim
 import com.zpic.launcher.data.AppEntry
 import com.zpic.launcher.data.HomeCell
 import com.zpic.launcher.data.HomeKind
+import com.zpic.launcher.data.activeMode
 import com.zpic.launcher.data.addApps
+import com.zpic.launcher.data.countOpen
 import com.zpic.launcher.data.findFree
 import com.zpic.launcher.data.gridOf
 import com.zpic.launcher.data.Gesture
@@ -75,6 +77,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
+import java.util.Calendar
 import kotlin.math.abs
 
 class MainActivity : ComponentActivity() {
@@ -132,7 +135,7 @@ class MainActivity : ComponentActivity() {
         runCatching {
             app.apps.launcher.startMainActivity(entry.component, entry.user, bounds, options.toBundle())
             app.settings.update { s ->
-                s.copy(
+                countOpen(s, entry.key, today()).copy(
                     launchCounts = s.launchCounts + (entry.key to ((s.launchCounts[entry.key] ?: 0) + 1)),
                     recents = (listOf(RecentUse(entry.key, System.currentTimeMillis())) + s.recents).take(80),
                 )
@@ -144,6 +147,8 @@ class MainActivity : ComponentActivity() {
      * The window animation is the system's. Only the phone's own launcher may drive the full shared
      * transition, so this picks the smoothest one offered to others, and the home screen moves with it.
      */
+    private fun today() = Calendar.getInstance().get(Calendar.DAY_OF_YEAR)
+
     private fun launchOptions(view: android.view.View, b: Rect?): ActivityOptions {
         val anim = app.settings.settings.value.appAnim
         return when {
@@ -164,7 +169,10 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     private fun Root(settings: Settings) {
-        val apps by app.apps.apps.collectAsState()
+        val allApps by app.apps.apps.collectAsState()
+        val resumeForMode by resumeTick.collectAsState()
+        val mode = remember(settings.modes, settings.manualMode, resumeForMode) { activeMode(settings, Calendar.getInstance().get(Calendar.HOUR_OF_DAY)) }
+        val apps = remember(allApps, mode) { if (mode == null) allApps else allApps.filter { it.key !in mode.hidden } }
         val waiting by DotsService.waiting.collectAsState()
         val dots = remember(waiting) { waiting.map { it.packageName }.toSet() }
         val home by homePresses.collectAsState()
@@ -214,7 +222,9 @@ class MainActivity : ComponentActivity() {
 
         val open: (AppEntry, Rect?) -> Unit = { entry, bounds ->
             haptics.confirm()
-            if (entry.key in settings.distracting) pending = entry to bounds else launch(entry, bounds)
+            val opens = if (settings.countsDay == today()) settings.openCounts[entry.key] ?: 0 else 0
+            val overNudge = settings.openNudge > 0 && opens >= settings.openNudge
+            if (entry.key in settings.distracting || overNudge) pending = entry to bounds else launch(entry, bounds)
         }
         val runGesture: (GestureBinding) -> Unit = { binding ->
             when (binding.action) {
@@ -282,7 +292,7 @@ class MainActivity : ComponentActivity() {
                 },
         ) {
             HomePages(
-                apps, settings, dots, waiting, ink, iconColors, resume, home, editor,
+                apps, settings, dots, waiting, ink, iconColors, resume, home, mode?.page ?: -1, editor,
                 onLaunch = open,
                 onMenu = { haptics.longPress(); menu = it },
                 onAddWidget = { widgetPage = it },
@@ -323,7 +333,7 @@ class MainActivity : ComponentActivity() {
             }
             pending?.let { (entry, bounds) ->
                 PauseOverlay(
-                    entry.label(settings), settings.pauseSeconds,
+                    entry.label(settings), settings.pauseSeconds, if (settings.countsDay == today()) settings.openCounts[entry.key] ?: 0 else 0,
                     onOpen = { pending = null; launch(entry, bounds) },
                     onCancel = { pending = null },
                 )
