@@ -34,7 +34,7 @@ A free, open-source alternative to launchers like Nova, Niagara, Lawnchair and O
 | Colour | System colours (Material You, or tools such as ColorBlendr), directly from the wallpaper, or 6 fixed palettes; light/dark, pure black |
 | Motion | Expressive, Standard, Reduced; speed and bounce sliders; 4 app-open animations; haptics with a strength control |
 | Clock | Pixel stacked, Android inline, One UI slim, iOS bold, Nothing dot matrix, OxygenOS two-tone, HyperOS condensed, Material cards, analog, words, small, none. Size, weight, colour, hour format, leading zero, AM/PM, date format and position |
-| Home | Grid of 4 to 7 columns and 5 to 9 rows, multiple pages, widgets, folders, a dock, a notification shelf, undo, layout presets, a layout lock, and a hidden status bar option |
+| Home | Fine grid of up to 16 columns and 20 rows, multiple pages, widgets, folders, a dock, a notification shelf, undo, layout presets, a layout lock, and a hidden status bar option |
 | Search | Fuzzy app search, a calculator, and web fallback |
 | App pages | Names A to Z, icons with labels, custom pages (drag apps to any cell), smart groups. A separate Recent card with how long ago each app was used |
 | Icons | Full colour, Tonal, Surface, Glyph only, Monogram; 7 shapes; Nova/ADW icon packs |
