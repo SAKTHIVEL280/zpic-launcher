@@ -5,3 +5,11 @@
 - [Website](https://sakthivel280.github.io/zpic-launcher/)
 - [Source code](https://github.com/SAKTHIVEL280/zpic-launcher)
 - [Download](https://github.com/SAKTHIVEL280/zpic-launcher/releases/latest)
+
+## Guides
+
+- [Minimal Android launcher, free and open source](https://sakthivel280.github.io/zpic-launcher/minimal-launcher-android.html): Looking for a minimal launcher for Android? Zpic is a free, open-source home screen with a clean grid, a text-only app list and no ads.
+- [Text-only Android launcher with an A to Z app list](https://sakthivel280.github.io/zpic-launcher/text-launcher-android.html): Zpic has a text-only app page: app names from A to Z, with an animated alphabet rail for fast one-handed scrolling.
+- [Material You launcher for Android with themed icons](https://sakthivel280.github.io/zpic-launcher/material-you-launcher.html): Zpic is a Material You launcher with Material 3 Expressive design. It follows your system colours, your wallpaper or a colour you choose.
+- [Launcher that themes every app icon on Android](https://sakthivel280.github.io/zpic-launcher/themed-icons-launcher.html): Zpic themes apps that have no monochrome icon, including icons made from flat PNG or JPG images, in tonal, two-tone, glyph or monogram styles.
+- [Open-source launcher alternative for Android](https://sakthivel280.github.io/zpic-launcher/open-source-launcher-alternative.html): A free, open-source alternative for people comparing launchers such as Nova, Niagara, Lawnchair and Olauncher. No ads, no account, no internet permission.

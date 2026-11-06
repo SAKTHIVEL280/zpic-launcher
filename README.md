@@ -76,6 +76,14 @@ Material 3 is pinned to `1.5.0-rc01` because `MotionScheme` is internal in stabl
 
 The release APK is signed with the debug key so it can be sideloaded. Before publishing: create your own upload key, and change `applicationId` if you want a different one, because it can't change afterwards. Store text, icon and privacy policy are in `store/`.
 
+## Guides
+
+- [Minimal Android launcher, free and open source](https://sakthivel280.github.io/zpic-launcher/minimal-launcher-android.html)
+- [Text-only Android launcher with an A to Z app list](https://sakthivel280.github.io/zpic-launcher/text-launcher-android.html)
+- [Material You launcher for Android with themed icons](https://sakthivel280.github.io/zpic-launcher/material-you-launcher.html)
+- [Launcher that themes every app icon on Android](https://sakthivel280.github.io/zpic-launcher/themed-icons-launcher.html)
+- [Open-source launcher alternative for Android](https://sakthivel280.github.io/zpic-launcher/open-source-launcher-alternative.html)
+
 ## Contributing
 
 Issues and pull requests are welcome. Run `./gradlew :app:testDebugUnitTest` before opening one.
