@@ -49,7 +49,9 @@ import com.zpic.launcher.data.DateStyle
 import com.zpic.launcher.data.HourFormat
 import com.zpic.launcher.data.Settings
 import com.zpic.launcher.system.SystemActions
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import java.text.DateFormat
 import java.util.Calendar
 import java.util.Date
@@ -248,6 +250,10 @@ fun ClockFace(s: Settings, ink: Color, resumeTick: Int, horizontal: Alignment.Ho
             }
         }
         if (!dateFirst) dateLine()
+        if (s.calendarGlance) {
+            val event by produceState<String?>(null, now) { value = withContext(Dispatchers.IO) { nextEvent(context) } }
+            event?.let { Text(it, style = inkStyle(ink).merge(MaterialTheme.typography.bodyMedium).copy(color = ink.copy(alpha = .78f)), maxLines = 1) }
+        }
         if (s.showBattery) {
             val level = remember(now) { context.getSystemService(android.os.BatteryManager::class.java).getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY) }
             Text("Battery $level%", style = inkStyle(ink).merge(MaterialTheme.typography.bodyMedium).copy(color = ink.copy(alpha = .78f)))
