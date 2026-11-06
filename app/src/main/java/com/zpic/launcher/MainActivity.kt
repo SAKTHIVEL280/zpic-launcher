@@ -304,7 +304,7 @@ class MainActivity : ComponentActivity() {
                     val p = drawer.value
                     // Past 1 the spring stretches the sheet from its base, so overshoot never bares the wallpaper below it.
                     translationY = (1f - p).coerceAtLeast(0f) * heightPx * .42f
-                    scaleY = 1f + (p - 1f).coerceAtLeast(0f) * .1f
+                    scaleY = 1f + (p - 1f).coerceAtLeast(0f) * .04f
                     transformOrigin = TransformOrigin(.5f, 1f)
                     alpha = (p * 2.2f).coerceIn(0f, 1f)
                     val corner = (1f - p).coerceIn(0f, 1f) * 36.dp.toPx()
