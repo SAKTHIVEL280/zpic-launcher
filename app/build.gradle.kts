@@ -13,7 +13,8 @@ android {
         minSdk = 29
         targetSdk = 37
         versionCode = 8
-        versionName = "1.6.1"
+        versionName = "1.7.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildTypes {
         release {
@@ -54,4 +55,6 @@ dependencies {
     implementation(libs.serialization)
     implementation(libs.profileinstaller)
     testImplementation(libs.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.junit)
 }

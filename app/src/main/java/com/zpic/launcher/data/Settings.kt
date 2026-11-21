@@ -126,6 +126,10 @@ data class Settings(
     val shelfExcluded: Set<String> = emptySet(),
     val shelfTap: ShelfTap = ShelfTap.Peek,
     val shelfNewestFirst: Boolean = true,
+    /** The app the music widget plays when nothing is playing yet. Picked the first time play is tapped. */
+    val musicApp: String? = null,
+    /** Brightness of the wallpaper Zpic last set, region by region, so text can pick a readable colour. */
+    val wallLuma: com.zpic.launcher.system.WallLuma? = null,
     val shelfAlign: HomeAlign = HomeAlign.Center,
     val iconOverrides: Map<String, IconOverride> = emptyMap(),
     val launchCounts: Map<String, Int> = emptyMap(),

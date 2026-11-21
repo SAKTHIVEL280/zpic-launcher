@@ -33,11 +33,17 @@ fun accentOf(colors: android.app.WallpaperColors): Int = listOfNotNull(colors.pr
         hsl[1] * (1f - kotlin.math.abs(hsl[2] - .5f) * 2f)
     }
 
-class WallpaperController(private val context: Context, private val onApplied: (Int) -> Unit) {
+class WallpaperController(
+    private val context: Context,
+    private val onApplied: (Int) -> Unit,
+    private val onMeasured: (WallLuma) -> Unit = {},
+) {
     private val manager = WallpaperManager.getInstance(context)
     private val metrics get() = context.resources.displayMetrics
 
     /** What the system reports now, trying each source; null if this phone reports nothing. */
+    // The last resort reads the wallpaper itself, which some phones refuse; that just returns null.
+    @android.annotation.SuppressLint("MissingPermission")
     fun currentAccent(): Int? {
         for (which in listOf(WallpaperManager.FLAG_SYSTEM, WallpaperManager.FLAG_LOCK)) {
             runCatching { manager.getWallpaperColors(which) }.getOrNull()?.let { return accentOf(it) }
@@ -74,7 +80,11 @@ class WallpaperController(private val context: Context, private val onApplied: (
         // Written one target at a time, because a combined write may leave no plain home wallpaper
         // file on some phones, and that file is what colour tools read.
         val png = ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
-        if (target != WallpaperTarget.Lock) manager.setStream(ByteArrayInputStream(png), null, true, WallpaperManager.FLAG_SYSTEM)
+        if (target != WallpaperTarget.Lock) {
+            val id = manager.setStream(ByteArrayInputStream(png), null, true, WallpaperManager.FLAG_SYSTEM)
+            // Remember how bright each part is, so the clock and text stay readable wherever they sit.
+            runCatching { onMeasured(measureWallpaper(bitmap).copy(id = id)) }
+        }
         if (target != WallpaperTarget.Home) manager.setStream(ByteArrayInputStream(png), null, true, WallpaperManager.FLAG_LOCK)
         if (target != WallpaperTarget.Lock) runCatching { onApplied(accentOf(android.app.WallpaperColors.fromBitmap(bitmap))) }
     }
