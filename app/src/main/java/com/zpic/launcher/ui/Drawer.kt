@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -94,6 +96,7 @@ import com.zpic.launcher.data.DrawerMode
 import com.zpic.launcher.data.HomeCell
 import com.zpic.launcher.data.HomeKind
 import com.zpic.launcher.data.RailSide
+import com.zpic.launcher.data.SearchPosition
 import com.zpic.launcher.data.Settings
 import com.zpic.launcher.data.evalMath
 import com.zpic.launcher.data.formatNumber
@@ -243,9 +246,13 @@ fun AppDrawer(
     val statusPad = WindowInsets.statusBars.asPaddingValues()
     val railOn = settings.rail != RailSide.Off && !isSearching && (pages == DrawerMode.Text || pages == DrawerMode.Icons)
     val railEnd = settings.rail != RailSide.Start
+    val searchTop = settings.searchPosition == SearchPosition.Top
+    val navBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    // The bar takes the status bar inset when it sits on top, so the list only needs a little air there.
+    val listTop = if (searchTop) 8.dp else statusPad.calculateTopPadding() + 16.dp
     val contentPad = PaddingValues(
-        top = statusPad.calculateTopPadding() + 16.dp,
-        bottom = 96.dp,
+        top = listTop,
+        bottom = if (searchTop) navBottom + 24.dp else 96.dp,
         start = if (railOn && !railEnd) 44.dp else 8.dp,
         end = if (railOn && railEnd) 44.dp else 8.dp,
     )
@@ -254,13 +261,21 @@ fun AppDrawer(
         .drawWithContent {
             drawContent()
             val edge = 48.dp.toPx()
-            val top = statusPad.calculateTopPadding().toPx()
+            val top = if (searchTop) 0f else statusPad.calculateTopPadding().toPx()
             drawRect(Brush.verticalGradient(0f to Color.Transparent, 1f to Color.Black, startY = top, endY = top + edge), blendMode = BlendMode.DstIn)
             drawRect(Brush.verticalGradient(0f to Color.Black, 1f to Color.Transparent, startY = size.height - edge, endY = size.height), blendMode = BlendMode.DstIn)
         }
 
     Box(Modifier.fillMaxSize().background(colors.surface.copy(alpha = settings.drawerOpacity))) {
+        val searchBar: @Composable () -> Unit = {
+            SearchBar(
+                query, { query = it }, focus, searchTop,
+                onSubmit = { results.firstOrNull()?.let { onLaunch(it.first, null) } ?: if (query.isNotBlank()) onSearchWeb(query) else Unit },
+                onSettings = onSettings,
+            )
+        }
         Column(Modifier.fillMaxSize().imePadding()) {
+            if (searchTop) searchBar()
             Box(Modifier.weight(1f).fillMaxWidth().nestedScroll(nested).then(fade)) {
                 val progress = { controller.value }
                 // One list slot holds all of these, so they must stack or they'd draw over each other.
@@ -273,7 +288,7 @@ fun AppDrawer(
                     else if (isSearching) WebRow(query, onSearchWeb)
                                 } }
                 when {
-                    !isSearching && pages == DrawerMode.Custom -> CustomPages(apps.filter { it.key !in settings.hidden }, settings, dots, iconColors, controller, statusPad.calculateTopPadding(), onLaunch, onMenu)
+                    !isSearching && pages == DrawerMode.Custom -> CustomPages(apps.filter { it.key !in settings.hidden }, settings, dots, iconColors, controller, if (searchTop) 0.dp else statusPad.calculateTopPadding(), onLaunch, onMenu)
                     !isSearching && pages == DrawerMode.Groups -> GroupsPage(apps.filter { it.key !in settings.hidden }, settings, dots, iconColors, contentPad, header, onLaunch, onMenu)
                     listLike -> TextList(rows, listState, settings, dots, touched, contentPad, progress, onLaunch, onMenu, header)
                     else -> IconGrid(rows, gridState, settings, dots, touched, iconColors, contentPad, onLaunch, onMenu, header)
@@ -283,11 +298,7 @@ fun AppDrawer(
                     Modifier.align(if (railEnd) Alignment.CenterEnd else Alignment.CenterStart),
                 )
             }
-            SearchBar(
-                query, { query = it }, focus,
-                onSubmit = { results.firstOrNull()?.let { onLaunch(it.first, null) } ?: if (query.isNotBlank()) onSearchWeb(query) else Unit },
-                onSettings = onSettings,
-            )
+            if (!searchTop) searchBar()
         }
         // Last, so it draws above the list.
         openFolder?.let { f ->
@@ -457,10 +468,10 @@ private fun NoResults(query: String, onSearchWeb: (String) -> Unit) {
 }
 
 @Composable
-private fun SearchBar(query: String, onChange: (String) -> Unit, focus: FocusRequester, onSubmit: () -> Unit, onSettings: () -> Unit) {
+private fun SearchBar(query: String, onChange: (String) -> Unit, focus: FocusRequester, top: Boolean, onSubmit: () -> Unit, onSettings: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     Row(
-        Modifier.navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp).fillMaxWidth().height(56.dp)
+        Modifier.then(if (top) Modifier.statusBarsPadding() else Modifier.navigationBarsPadding()).padding(horizontal = 12.dp, vertical = 8.dp).fillMaxWidth().height(56.dp)
             .clip(CircleShape).background(colors.surfaceContainerHigh).padding(start = 18.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

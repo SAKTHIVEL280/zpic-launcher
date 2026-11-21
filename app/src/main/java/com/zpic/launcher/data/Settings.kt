@@ -24,13 +24,16 @@ enum class ClockTint { Wallpaper, Ink, Primary, Secondary, Tertiary }
 enum class HourFormat { System, H12, H24 }
 enum class DateStyle { Short, Long, Numeric }
 enum class HomeAlign { Start, Center, End }
+enum class ShelfTap { Peek, Open }
+enum class DockStyle { Plain, Pill, Bar }
+enum class SearchPosition { Bottom, Top }
 enum class FavStyle { Text, IconText, Icons }
 enum class DrawerMode { Text, Icons, Custom, Groups }
 enum class RailSide { End, Start, Off }
 enum class IconStyle { System, Tonal, Surface, TwoTone, Ghost, Monogram }
 enum class AppAnim { Scale, Rise, Reveal, System }
 enum class GlyphInk { Theme, White }
-enum class IconOverride { Auto, Glyph, Monogram, Original }
+enum class IconOverride { Auto, Glyph, Monogram, Original, Custom }
 enum class IconShape { Circle, Squircle, Square, Cookie, Clover, Sunny, Arch }
 enum class Gesture { None, Notifications, Drawer, Search, Lock, Settings, App }
 
@@ -67,6 +70,8 @@ data class Settings(
     val showDate: Boolean = true,
     val showAlarm: Boolean = true,
     val showBattery: Boolean = false,
+    /** Null follows the pinned apps' alignment, which is what the clock did before it had its own. */
+    val clockAlign: HomeAlign? = null,
     val intention: String = "",
     val align: HomeAlign = HomeAlign.Start,
     val favStyle: FavStyle = FavStyle.Text,
@@ -78,6 +83,7 @@ data class Settings(
     val gridScaled: Boolean = false,
     val showDock: Boolean = false,
     val dock: List<String> = emptyList(),
+    val dockStyle: DockStyle = DockStyle.Plain,
     val homeLabels: Boolean = true,
     val lockLayout: Boolean = false,
     val hideStatusBar: Boolean = false,
@@ -96,6 +102,7 @@ data class Settings(
     val drawerOpacity: Float = 0.94f,
     val autoKeyboard: Boolean = false,
     val autoLaunch: Boolean = false,
+    val searchPosition: SearchPosition = SearchPosition.Bottom,
     val suggestions: Boolean = true,
 
     val iconStyle: IconStyle = IconStyle.Tonal,
@@ -117,6 +124,9 @@ data class Settings(
     val pauseSeconds: Int = 5,
     val dots: Boolean = false,
     val shelfExcluded: Set<String> = emptySet(),
+    val shelfTap: ShelfTap = ShelfTap.Peek,
+    val shelfNewestFirst: Boolean = true,
+    val shelfAlign: HomeAlign = HomeAlign.Center,
     val iconOverrides: Map<String, IconOverride> = emptyMap(),
     val launchCounts: Map<String, Int> = emptyMap(),
     val recents: List<RecentUse> = emptyList(),

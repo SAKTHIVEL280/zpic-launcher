@@ -46,6 +46,7 @@ import com.zpic.launcher.data.ClockStyle
 import com.zpic.launcher.data.ClockTint
 import com.zpic.launcher.data.ClockWeight
 import com.zpic.launcher.data.DateStyle
+import com.zpic.launcher.data.HomeAlign
 import com.zpic.launcher.data.HourFormat
 import com.zpic.launcher.data.Settings
 import com.zpic.launcher.system.SystemActions
@@ -83,6 +84,24 @@ private fun ClockWeight.font() = when (this) {
     ClockWeight.Bold -> FontWeight.Bold
 }
 
+/** How heavy the dots and hands are, so Weight means something on faces that aren't text. */
+private fun ClockWeight?.stroke() = when (this) {
+    ClockWeight.Thin -> .55f
+    ClockWeight.Light -> .78f
+    null, ClockWeight.Regular -> 1f
+    ClockWeight.Medium -> 1.08f
+    ClockWeight.Bold -> 1.16f
+}
+
+/** The clock's own alignment, falling back to the pinned apps' so older layouts look the same. */
+fun Settings.clockAlignment(): HomeAlign = clockAlign ?: align
+
+fun HomeAlign.horizontal(): Alignment.Horizontal = when (this) {
+    HomeAlign.Start -> Alignment.Start
+    HomeAlign.Center -> Alignment.CenterHorizontally
+    HomeAlign.End -> Alignment.End
+}
+
 private val dotDigits = mapOf(
     '0' to "01110 10001 10011 10101 11001 10001 01110", '1' to "00100 01100 00100 00100 00100 00100 01110",
     '2' to "01110 10001 00001 00110 01000 10000 11111", '3' to "11111 00010 00100 00010 00001 10001 01110",
@@ -92,12 +111,12 @@ private val dotDigits = mapOf(
 )
 
 @Composable
-private fun DotDigit(ch: Char, dot: Dp, ink: Color) {
+private fun DotDigit(ch: Char, dot: Dp, ink: Color, weight: Float = 1f) {
     val rows = dotDigits[ch]?.split(' ').orEmpty()
     Canvas(Modifier.size(dot * 5.6f, dot * 7)) {
         val step = dot.toPx()
         rows.forEachIndexed { y, row -> row.forEachIndexed { x, bit ->
-            if (bit == '1') drawCircle(ink, step * .42f, Offset(step * (x + .5f), step * (y + .5f)))
+            if (bit == '1') drawCircle(ink, step * .42f * weight, Offset(step * (x + .5f), step * (y + .5f)))
             else drawCircle(ink.copy(alpha = ink.alpha * .1f), step * .16f, Offset(step * (x + .5f), step * (y + .5f)))
         } }
     }
@@ -124,7 +143,7 @@ private fun Rolling(text: String, cell: @Composable (Char) -> Unit) {
 private fun Rolling(text: String, style: TextStyle) = Rolling(text) { Text(it.toString(), style = style) }
 
 @Composable
-private fun AnalogFace(now: Calendar, size: Dp, ink: Color, accent: Color) {
+private fun AnalogFace(now: Calendar, size: Dp, ink: Color, accent: Color, weight: Float = 1f) {
     val motion = LocalMotion.current
     // Absolute minutes, so the hand never spins backwards at the top of the hour.
     val minutes = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
@@ -134,9 +153,9 @@ private fun AnalogFace(now: Calendar, size: Dp, ink: Color, accent: Color) {
         val r = this.size.minDimension / 2
         fun at(deg: Float, len: Float) = Offset(c.x + cos((deg - 90f) * PI / 180).toFloat() * len, c.y + sin((deg - 90f) * PI / 180).toFloat() * len)
         for (i in 0 until 12) drawCircle(ink.copy(alpha = if (i % 3 == 0) 1f else .5f), r * (if (i % 3 == 0) .035f else .02f), at(i * 30f, r * .92f))
-        drawLine(ink, c, at(hand / 2f, r * .5f), r * .075f, StrokeCap.Round)
-        drawLine(accent, c, at(hand * 6f, r * .76f), r * .045f, StrokeCap.Round)
-        drawCircle(accent, r * .06f, c)
+        drawLine(ink, c, at(hand / 2f, r * .5f), r * .075f * weight, StrokeCap.Round)
+        drawLine(accent, c, at(hand * 6f, r * .76f), r * .045f * weight, StrokeCap.Round)
+        drawCircle(accent, r * .06f * weight.coerceAtLeast(1f), c)
     }
 }
 
@@ -170,7 +189,8 @@ fun ClockFace(s: Settings, ink: Color, resumeTick: Int, horizontal: Alignment.Ho
     val hourValue = if (is24) h24 else (h24 % 12).let { if (it == 0) 12 else it }
     val hour = if (is24 || s.leadingZero) "%02d".format(hourValue) else hourValue.toString()
     val minute = "%02d".format(now.get(Calendar.MINUTE))
-    val ampm = if (!is24 && s.showAmPm) (if (h24 < 12) " AM" else " PM") else ""
+    val meridiem = if (!is24 && s.showAmPm) (if (h24 < 12) "AM" else "PM") else null
+    val ampm = meridiem?.let { " $it" } ?: ""
 
     fun readable(c: Color) = if (ink == Color.White) lerp(c, Color.White, .5f) else lerp(c, Color.Black, .25f)
     val seed = LocalWallpaperSeed.current
@@ -207,6 +227,17 @@ fun ClockFace(s: Settings, ink: Color, resumeTick: Int, horizontal: Alignment.Ho
             style = inkStyle(ink).merge(MaterialTheme.typography.titleMedium),
         )
     }
+    fun weight(default: FontWeight) = s.clockWeight?.font() ?: default
+    // Faces that draw the time as one block get AM/PM as a small tag beside or under it.
+    val tag: @Composable () -> Unit = {
+        if (meridiem != null) Text(meridiem, style = base.merge(MaterialTheme.typography.titleLarge).copy(fontWeight = weight(FontWeight.Medium)))
+    }
+    val beside: @Composable (@Composable () -> Unit) -> Unit = { time ->
+        Row(verticalAlignment = Alignment.Bottom) {
+            time()
+            if (meridiem != null) Box(Modifier.padding(start = 8.dp, bottom = 10.dp)) { tag() }
+        }
+    }
     val dateFirst = s.dateAbove || s.clock == ClockStyle.Ios || s.clock == ClockStyle.OneUi
 
     Column(horizontalAlignment = horizontal) {
@@ -217,35 +248,46 @@ fun ClockFace(s: Settings, ink: Color, resumeTick: Int, horizontal: Alignment.Ho
                     val b = big(104, FontWeight.Light)
                     Rolling(hour, b)
                     Rolling(minute, b.copy(color = face.copy(alpha = .78f)))
+                    tag()
                 }
                 ClockStyle.Inline -> Rolling("$hour:$minute$ampm", big(72, FontWeight.Light))
-                ClockStyle.OneUi -> Rolling("$hour:$minute", big(84, FontWeight.Thin))
-                ClockStyle.Ios -> Rolling("$hour:$minute", big(92, FontWeight.SemiBold))
-                ClockStyle.Dots -> {
+                ClockStyle.OneUi -> beside { Rolling("$hour:$minute", big(84, FontWeight.Thin)) }
+                ClockStyle.Ios -> beside { Rolling("$hour:$minute", big(92, FontWeight.SemiBold)) }
+                ClockStyle.Dots -> beside {
                     val dot = 9.dp
-                    Column(verticalArrangement = Arrangement.spacedBy(dot)) {
-                        Rolling(hour.padStart(2, '0')) { DotDigit(it, dot, face) }
-                        Rolling(minute) { DotDigit(it, dot, face.copy(alpha = face.alpha * .72f)) }
+                    val w = s.clockWeight.stroke()
+                    Column(verticalArrangement = Arrangement.spacedBy(dot), horizontalAlignment = horizontal) {
+                        Rolling(hour) { DotDigit(it, dot, face, w) }
+                        Rolling(minute) { DotDigit(it, dot, face.copy(alpha = face.alpha * .72f), w) }
                     }
                 }
-                ClockStyle.Accent -> Row {
-                    Rolling(hour, big(88, FontWeight.Medium).copy(color = accent))
-                    Rolling(minute, big(88, FontWeight.Light))
-                }
-                ClockStyle.Hyper -> Rolling("$hour$minute", big(110, FontWeight.Bold, FontFamily(android.graphics.Typeface.create("sans-serif-condensed", android.graphics.Typeface.BOLD))))
-                ClockStyle.Cards -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    val b = big(64, FontWeight.Medium).copy(color = colors.onPrimaryContainer, shadow = null)
-                    listOf(hour.padStart(2, '0'), minute).forEach { part ->
-                        Box(Modifier.clip(RoundedCornerShape(28.dp)).background(colors.primaryContainer).padding(horizontal = 18.dp, vertical = 10.dp)) { Rolling(part, b) }
+                ClockStyle.Accent -> beside {
+                    Row {
+                        Rolling(hour, big(88, FontWeight.Medium).copy(color = accent))
+                        Rolling(minute, big(88, FontWeight.Light))
                     }
                 }
-                ClockStyle.Analog -> AnalogFace(now, 190.dp, face, accent)
+                // A regular-weight base, so the chosen weight can still change it; bold is the style's default.
+                ClockStyle.Hyper -> beside { Rolling("$hour$minute", big(110, FontWeight.Bold, FontFamily(android.graphics.Typeface.create("sans-serif-condensed", android.graphics.Typeface.NORMAL)))) }
+                ClockStyle.Cards -> beside {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        val b = big(64, FontWeight.Medium).copy(color = colors.onPrimaryContainer, shadow = null)
+                        listOf(hour, minute).forEach { part ->
+                            Box(Modifier.clip(RoundedCornerShape(28.dp)).background(colors.primaryContainer).padding(horizontal = 18.dp, vertical = 10.dp)) { Rolling(part, b) }
+                        }
+                    }
+                }
+                ClockStyle.Analog -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    AnalogFace(now, 190.dp, face, accent, s.clockWeight.stroke())
+                    tag()
+                }
                 ClockStyle.Words -> Column(horizontalAlignment = horizontal) {
                     words(h24, now.get(Calendar.MINUTE)).forEachIndexed { i, w ->
                         Text(w, style = big(44, if (i == 0) FontWeight.Medium else FontWeight.Light).copy(color = if (i == 0) face else face.copy(alpha = .75f)))
                     }
+                    tag()
                 }
-                ClockStyle.Small -> Rolling("$hour:$minute$ampm", base.merge(MaterialTheme.typography.headlineMedium).copy(fontSize = 28.sp))
+                ClockStyle.Small -> Rolling("$hour:$minute$ampm", base.merge(MaterialTheme.typography.headlineMedium).copy(fontSize = 28.sp, fontWeight = weight(FontWeight.Normal)))
                 ClockStyle.Hidden -> Unit
             }
         }

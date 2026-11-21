@@ -10,6 +10,8 @@ import com.zpic.launcher.data.fitted
 import com.zpic.launcher.data.gridOf
 import com.zpic.launcher.data.isFree
 import com.zpic.launcher.data.removePage
+import com.zpic.launcher.data.SpanLimits
+import com.zpic.launcher.data.fullWidth
 import com.zpic.launcher.data.resizedCell
 import com.zpic.launcher.data.withoutFromFolder
 import org.junit.Assert.assertEquals
@@ -56,6 +58,38 @@ class HomeLayoutTest {
         assertNull(resizedCell(listOf(clock), clock, 3, 0, 1, 1, 5, 6))
         val shifted = clock.copy(col = 1)
         assertEquals(4, resizedCell(listOf(shifted), shifted, -1, 0, -1, 1, 5, 6)?.spanX)
+    }
+
+    @Test fun edgeHandlesResizeOneAxisOnly() {
+        val wide = resizedCell(listOf(clock), clock, 1, 5, 1, 0, 5, 6)!!
+        assertEquals(4, wide.spanX); assertEquals(clock.spanY, wide.spanY); assertEquals(clock.row, wide.row)
+        val taller = resizedCell(listOf(clock), clock, 4, -1, 0, -1, 5, 6)!!
+        assertEquals(clock.spanX, taller.spanX); assertEquals(3, taller.spanY); assertEquals(1, taller.row)
+    }
+
+    @Test fun resizeRespectsWidgetLimits() {
+        val w = HomeCell("w", HomeKind.Widget, col = 0, row = 0, spanX = 4, spanY = 2, widgetId = 1)
+        val limits = SpanLimits(minX = 3, minY = 2, maxX = 5, maxY = 3)
+        assertEquals(3, resizedCell(listOf(w), w, -3, 0, 1, 0, 10, 12, limits)?.spanX)
+        assertEquals(5, resizedCell(listOf(w), w, 4, 0, 1, 0, 10, 12, limits)?.spanX)
+        assertEquals(3, resizedCell(listOf(w), w, 0, 5, 0, 1, 10, 12, limits)?.spanY)
+        // A widget that can't stretch sideways keeps its width whatever the drag.
+        assertEquals(4, resizedCell(listOf(w), w, 3, 0, 1, 0, 10, 12, limits.copy(canX = false))?.spanX)
+    }
+
+    @Test fun leftEdgeKeepsTheRightEdgeStill() {
+        val w = HomeCell("w", HomeKind.Widget, col = 4, row = 0, spanX = 4, spanY = 2, widgetId = 1)
+        val grown = resizedCell(listOf(w), w, -2, 0, -1, 0, 10, 12)!!
+        assertEquals(2, grown.col); assertEquals(6, grown.spanX); assertEquals(8, grown.col + grown.spanX)
+    }
+
+    @Test fun fullWidthFillsTheRowUnlessBlocked() {
+        val w = HomeCell("w", HomeKind.Widget, col = 2, row = 4, spanX = 4, spanY = 2, widgetId = 1)
+        val full = fullWidth(listOf(w), w, 10)!!
+        assertEquals(0, full.col); assertEquals(10, full.spanX); assertEquals(4, full.row)
+        val beside = HomeCell("x", HomeKind.App, col = 8, row = 5, spanX = 2, spanY = 1, app = "X")
+        assertNull(fullWidth(listOf(w, beside), w, 10))
+        assertNull(fullWidth(listOf(full), full, 10))
     }
 
     @Test fun shrinkingTheGridKeepsEverythingAndOverlapsNothing() {
