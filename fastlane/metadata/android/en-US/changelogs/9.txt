@@ -1,0 +1,1 @@
+Setup now asks for every permission in one place. Each one lists what it's needed for, most important first. "Allow all" asks for calendar and contacts together, then opens notification access, usage access and accessibility one after another. You can find it later in Settings, Permissions. Skip any you don't need.

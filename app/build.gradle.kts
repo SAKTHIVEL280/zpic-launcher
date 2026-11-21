@@ -12,8 +12,8 @@ android {
         applicationId = "com.zpic.launcher"
         minSdk = 29
         targetSdk = 37
-        versionCode = 8
-        versionName = "1.7.0"
+        versionCode = 9
+        versionName = "1.7.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildTypes {
