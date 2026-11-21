@@ -1,5 +1,10 @@
 package com.zpic.launcher.ui
 
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.foundation.Image
+import androidx.core.view.drawToBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.ImageBitmap
 import android.os.Build
 import android.util.SizeF
 import androidx.compose.runtime.SideEffect
@@ -227,6 +232,14 @@ private fun WidgetCell(cell: HomeCell, box: DpSize) {
     }
 }
 
+/** Widget views on screen, so a dragged widget can carry a picture of itself instead of a placeholder. */
+private val liveWidgets = HashMap<Int, java.lang.ref.WeakReference<android.view.View>>()
+
+/** What a widget looks like right now, or null if it isn't laid out on screen. */
+internal fun widgetSnapshot(id: Int): ImageBitmap? = liveWidgets[id]?.get()
+    ?.takeIf { it.isAttachedToWindow && it.width > 0 && it.height > 0 }
+    ?.let { runCatching { it.drawToBitmap().asImageBitmap() }.getOrNull() }
+
 @Composable
 private fun OneWidget(id: Int, box: DpSize) {
     val context = LocalContext.current
@@ -242,6 +255,7 @@ private fun OneWidget(id: Int, box: DpSize) {
         factory = { c ->
             app.widgetHost.createView(c.applicationContext, id, info).apply {
                 layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+                liveWidgets[id] = java.lang.ref.WeakReference(this)
             }
         },
         update = { view ->
@@ -251,7 +265,8 @@ private fun OneWidget(id: Int, box: DpSize) {
             if (Build.VERSION.SDK_INT >= 31) view.updateAppWidgetSize(Bundle(), listOf(SizeF(box.width.value, box.height.value)))
             else { val w = box.width.value.toInt(); val h = box.height.value.toInt(); view.updateAppWidgetSize(Bundle(), w, h, w, h) }
         },
-        modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(24.dp)),
+        // No clip or frame of our own: widgets draw their own shape and background, exactly as their app designed them.
+        modifier = Modifier.fillMaxSize(),
     )
 }
 
@@ -588,12 +603,19 @@ private fun PageCanvas(
                     CellContent(cell, DpSize(size.width - pad.width * 2, size.height - pad.height * 2), apps, s, dots, waiting, ink, colors, resumeTick, homeIconSize(s, cell.spanX, cell.spanY, cw, ch), onLaunch, onMenu, onFolder)
                 }
                 if (editor.editing) {
-                    // Every item shows its bounds while arranging, so empty or quiet items can still be found and grabbed.
+                    // Launcher items show their bounds while arranging, so empty or quiet ones can still be found.
+                    // Widgets already show their own edges, so they get nothing on top beyond the selected frame.
                     val frame = RoundedCornerShape(16.dp)
+                    val widget = cell.kind == HomeKind.Widget
                     Box(
                         Modifier.matchParentSize().padding(2.dp).clip(frame)
-                            .background(if (selected) scheme.primary.copy(alpha = .14f) else Color.White.copy(alpha = .07f))
-                            .border(if (selected) 2.dp else 1.dp, if (selected) scheme.primary else Color.White.copy(alpha = .32f), frame)
+                            .then(
+                                when {
+                                    selected -> Modifier.border(2.dp, scheme.primary, frame).then(if (widget) Modifier else Modifier.background(scheme.primary.copy(alpha = .14f)))
+                                    widget -> Modifier
+                                    else -> Modifier.background(Color.White.copy(alpha = .07f)).border(1.dp, Color.White.copy(alpha = .32f), frame)
+                                },
+                            )
                             .pointerInput(base.id) { detectTapGestures { haptics?.tick(); editor.selected = if (editor.selected == base.id) null else base.id } }
                             .pointerInput(base.id, cwPx, chPx, s.lockLayout) {
                                 if (!s.lockLayout) detectDragGestures(
@@ -756,9 +778,18 @@ fun HomePages(
     val shown = remember(waiting, apps, s.shelfExcluded) {
         waiting.mapNotNull { w -> apps.firstOrNull { it.packageName == w.packageName && it.key !in s.shelfExcluded }?.let { it to w } }
     }
-    // Big enough to aim at, small enough to clear both bars. The origin sits low because the top bar is
-    // close to the page while the bottom toolbar mostly covers the dock, which is below the page anyway.
-    val zoom by animateFloatAsState(if (editor.editing) .86f else 1f, motion.settle(), label = "zoom")
+    // Arrange mode fits the page exactly between its top bar and bottom toolbar, measured on this screen,
+    // so nothing at the bottom of the page ends up hidden (and stuck) under the toolbar on any phone shape.
+    val zoomT by animateFloatAsState(if (editor.editing) 1f else 0f, motion.settle(), label = "zoom")
+    var frame by remember { mutableStateOf(Rect.Zero) }
+    var topBarBottom by remember { mutableFloatStateOf(0f) }
+    var toolbarTop by remember { mutableFloatStateOf(0f) }
+    val gap = with(LocalDensity.current) { 12.dp.toPx() }
+    val room = toolbarTop - topBarBottom - gap * 2
+    val measured = frame.height > 0f && topBarBottom > 0f && room > 0f
+    val fit = if (measured) (room / frame.height).coerceIn(.55f, .9f) else .8f
+    val shiftY = if (measured) topBarBottom + gap + (room - frame.height * fit) / 2 - frame.top else frame.height * .1f
+    val zoom = 1f + (fit - 1f) * zoomT
     var pageWidth by remember { mutableFloatStateOf(1f) }
     var pageRect by remember { mutableStateOf(Rect.Zero) }
 
@@ -809,7 +840,7 @@ fun HomePages(
         // Everything but the page is dimmed, so the page reads as a card and its edges are obvious.
         val dim by animateFloatAsState(if (editor.editing) .62f else 0f, motion.settle(), label = "dim")
         if (dim > 0f) Canvas(Modifier.fillMaxSize()) {
-            val r = 28.dp.toPx() * .76f
+            val r = 28.dp.toPx() * zoom
             val hole = Path().apply {
                 fillType = PathFillType.EvenOdd
                 addRect(Rect(0f, 0f, size.width, size.height))
@@ -820,7 +851,8 @@ fun HomePages(
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
             Box(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp).padding(top = 8.dp, bottom = 4.dp)) {
                 BoxWithConstraints(
-                    Modifier.fillMaxSize().graphicsLayer { scaleX = zoom; scaleY = zoom; transformOrigin = TransformOrigin(.5f, .6f) }
+                    Modifier.fillMaxSize().onGloballyPositioned { frame = it.boundsInRoot() }
+                        .graphicsLayer { scaleX = zoom; scaleY = zoom; translationY = shiftY * zoomT; transformOrigin = TransformOrigin(.5f, 0f) }
                         .onGloballyPositioned { pageRect = it.boundsInRoot() },
                 ) {
                     pageWidth = constraints.maxWidth.toFloat()
@@ -851,8 +883,13 @@ fun HomePages(
                             Modifier.offset { IntOffset((d.col * cw + editor.dragOffset.x).roundToInt(), (d.row * ch + editor.dragOffset.y).roundToInt()) }
                                 .size(size).graphicsLayer { scaleX = lift; scaleY = lift; alpha = .92f },
                         ) {
-                            if (d.kind == HomeKind.Widget) Box(Modifier.fillMaxSize().clip(RoundedCornerShape(24.dp)).background(scheme.surfaceContainerHigh), Alignment.Center) {
-                                Icon(Icons.Outlined.Widgets, null, tint = scheme.onSurfaceVariant)
+                            // A dragged widget is a picture of itself, taken as it was lifted.
+                            val shot = remember(d.id) { if (d.kind == HomeKind.Widget) widgetSnapshot(d.widgetId) else null }
+                            if (d.kind == HomeKind.Widget) {
+                                if (shot != null) Image(shot, null, Modifier.fillMaxSize(), contentScale = ContentScale.FillBounds)
+                                else Box(Modifier.fillMaxSize().clip(RoundedCornerShape(24.dp)).background(scheme.surfaceContainerHigh), Alignment.Center) {
+                                    Icon(Icons.Outlined.Widgets, null, tint = scheme.onSurfaceVariant)
+                                }
                             } else CellContent(d, size, apps, s, dots, shown, ink, iconColors, resumeTick, homeIconSize(s, d.spanX, d.spanY, with(density) { cw.toDp() }, with(density) { ch.toDp() }), onLaunch, onMenu) {}
                         }
                     }
@@ -891,7 +928,8 @@ fun HomePages(
             Box(Modifier.fillMaxSize()) {
                 Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(220.dp).background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = .62f)))))
                 Row(
-                    Modifier.align(Alignment.TopCenter).fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp),
+                    Modifier.align(Alignment.TopCenter).fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp, vertical = 8.dp)
+                        .onGloballyPositioned { topBarBottom = it.boundsInRoot().bottom },
                     horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically,
                 ) {
                     PageChip(Icons.Outlined.Home, if (s.homeMain == pager.currentPage) "Main" else "Make main", s.homeMain == pager.currentPage) { repo.update { it.copy(homeMain = pager.currentPage) } }
@@ -907,16 +945,6 @@ fun HomePages(
                     Button({ haptics?.confirm(); editor.close() }) { Text("Done") }
                 }
                 Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding().padding(horizontal = 8.dp).padding(bottom = 12.dp)) {
-                    // Arrange mode explains itself briefly, then gets out of the way of the page.
-                    var hint by remember { mutableStateOf(true) }
-                    LaunchedEffect(Unit) { delay(4000); hint = false }
-                    AnimatedVisibility(hint && undo == null && editor.selected == null && editor.dragged == null, Modifier.align(Alignment.CenterHorizontally), enter = fadeIn(motion.effects()), exit = fadeOut(motion.effects())) {
-                        Text(
-                            if (s.lockLayout) "Layout is locked. Unlock it in Settings to move things." else "Tap an item to resize it  ·  Hold and drag to move",
-                            Modifier.padding(bottom = 10.dp).clip(CircleShape).background(Color.Black.copy(alpha = .45f)).padding(horizontal = 14.dp, vertical = 6.dp),
-                            color = Color.White, fontSize = 12.sp, maxLines = 1,
-                        )
-                    }
                     undo?.let { gone ->
                         Surface(Modifier.align(Alignment.CenterHorizontally).padding(bottom = 12.dp), shape = CircleShape, color = scheme.inverseSurface) {
                             Row(Modifier.padding(start = 20.dp, end = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -925,7 +953,7 @@ fun HomePages(
                             }
                         }
                     }
-                    Row(Modifier.fillMaxWidth()) {
+                    Row(Modifier.fillMaxWidth().onGloballyPositioned { toolbarTop = it.boundsInRoot().top }) {
                         EditAction(Icons.Outlined.Wallpaper, "Wallpaper", Modifier.weight(1f), onWallpaper)
                         EditAction(Icons.Outlined.Widgets, "Widgets", Modifier.weight(1f)) { onAddWidget(pager.currentPage) }
                         EditAction(Icons.Outlined.AddCircleOutline, "Add", Modifier.weight(1f)) { addSheet = true }
