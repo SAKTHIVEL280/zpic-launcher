@@ -3,6 +3,12 @@ package com.zpic.launcher.ui.settings
 import android.Manifest
 import android.app.Activity
 import android.content.ComponentName
+import android.content.Context
+import androidx.core.content.ContextCompat
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.material.icons.outlined.VerifiedUser
+import androidx.compose.material.icons.outlined.CheckCircle
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
@@ -213,6 +219,7 @@ private val pages = listOf(
     Page("Notifications", "Notification shelf and dots", Icons.Outlined.Notifications),
     Page("Focus", "Pauses, focus modes, hidden apps", Icons.Outlined.SelfImprovement),
     Page("Backup", "Save or restore your setup", Icons.Outlined.Backup),
+    Page("Permissions", "What each one is for, allow them all at once", Icons.Outlined.VerifiedUser),
 )
 
 @Composable
@@ -270,6 +277,7 @@ private fun SettingsRoot(settings: Settings, direct: String?, finish: () -> Unit
                     "Notifications" -> NotificationsPage(settings, update)
                     "Focus" -> FocusPage(settings, update)
                     "Backup" -> BackupPage()
+                    "Permissions" -> Group { Permissions(update) }
                 }
             }
         }
@@ -327,7 +335,8 @@ private fun Welcome(s: Settings, up: Up) {
     Group("2. Your icons") {
         Choice("Icon style", IconStyle.entries, s.iconStyle, { when (it) { IconStyle.System -> "Full colour"; IconStyle.Tonal -> "Tonal"; IconStyle.Surface -> "Surface"; IconStyle.TwoTone -> "Two-tone"; IconStyle.Ghost -> "Glyph only"; IconStyle.Monogram -> "Monogram" } }, onPick = { v -> up { it.copy(iconStyle = v) } })
     }
-    Group("3. Make it home") {
+    Group("3. Permissions") { Permissions(up) }
+    Group("4. Make it home") {
         Note("Set Zpic as your home app", "You can change this any time.") {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button({ up { it.copy(onboarded = true) }; if (!SystemActions.isDefaultHome(context)) SystemActions.requestDefaultHome(context as Activity) }) { Text("Finish") }
@@ -456,6 +465,123 @@ private fun Note(title: String, hint: String? = null, content: (@Composable () -
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             TwoLine(title, hint)
             content?.invoke()
+        }
+    }
+}
+
+/** Something Zpic can only do with the user's say-so: what it is, what it's for, and how to allow it. */
+private class Access(
+    val title: String,
+    /** What it's needed for, most important first. */
+    val uses: List<String>,
+    val note: String? = null,
+    val granted: (Context) -> Boolean,
+    val runtime: String? = null,
+    val page: ((Context) -> Intent)? = null,
+)
+
+private fun hasPermission(context: Context, permission: String) =
+    ContextCompat.checkSelfPermission(context, permission) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+/** Most useful first. */
+private val accesses = listOf(
+    Access(
+        "Notification access",
+        listOf("Notification shelf: your notifications, grouped by app, on the home screen", "Notification dots on app icons", "Music widget: shows what's playing and controls it"),
+        "Zpic only reads which apps have notifications and what's playing.",
+        { SystemActions.isDotsOn(it) },
+        page = { c -> Intent(AndroidSettings.ACTION_NOTIFICATION_LISTENER_SETTINGS).putExtra("android.provider.extra.NOTIFICATION_LISTENER_COMPONENT_NAME", ComponentName(c, DotsService::class.java).flattenToString()) },
+    ),
+    Access(
+        "Usage access",
+        listOf("Recent apps: includes apps you opened outside Zpic"),
+        granted = { hasUsageAccess(it) },
+        page = { c -> Intent(AndroidSettings.ACTION_USAGE_ACCESS_SETTINGS, android.net.Uri.parse("package:${c.packageName}")) },
+    ),
+    Access("Calendar", listOf("Date widget: shows your next event", "Clock: your next event under the time, if you turn it on"), granted = { hasPermission(it, Manifest.permission.READ_CALENDAR) }, runtime = Manifest.permission.READ_CALENDAR),
+    Access("Contacts", listOf("Search: finds people as well as apps"), granted = { hasPermission(it, Manifest.permission.READ_CONTACTS) }, runtime = Manifest.permission.READ_CONTACTS),
+    Access(
+        "Screen lock (Accessibility)",
+        listOf("Lock the screen with a gesture, such as double-tap"),
+        "Find Zpic screen lock in the list and turn it on. It only locks the screen and reads nothing.",
+        { SystemActions.isLockServiceOn(it) },
+        page = { c -> Intent(AndroidSettings.ACTION_ACCESSIBILITY_SETTINGS).putExtra(":settings:fragment_args_key", ComponentName(c, com.zpic.launcher.system.LockService::class.java).flattenToString()) },
+    ),
+)
+
+private fun openAccess(context: Context, access: Access) {
+    val intent = access.page?.invoke(context) ?: return
+    // Some phones don't open the per-app page; their general list still works.
+    if (!SystemActions.start(context, intent)) SystemActions.start(context, Intent(intent.action))
+}
+
+/**
+ * Every permission in one place, each with what it's for. "Allow all" asks for the ordinary ones in one go,
+ * then opens each special-access page in turn: Android only lets people switch those on themselves.
+ */
+@Composable
+private fun Permissions(up: Up) {
+    val context = LocalContext.current
+    val scheme = MaterialTheme.colorScheme
+    var tick by remember { mutableIntStateOf(0) }
+    val owner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    DisposableEffect(owner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, e -> if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) tick++ }
+        owner.lifecycle.addObserver(observer)
+        onDispose { owner.lifecycle.removeObserver(observer) }
+    }
+    val missing = remember(tick) { accesses.filterNot { it.granted(context) } }
+    // While walking through "Allow all", each special page opens once; coming back opens the next.
+    var walking by remember { mutableStateOf(false) }
+    val visited = remember { mutableStateListOf<String>() }
+    LaunchedEffect(walking, tick) {
+        if (!walking) return@LaunchedEffect
+        val next = missing.firstOrNull { it.page != null && it.title !in visited }
+        if (next == null) walking = false else { visited += next.title; openAccess(context, next) }
+    }
+    fun granted(result: Map<String, Boolean>) {
+        if (result[Manifest.permission.READ_CONTACTS] == true) up { it.copy(searchContacts = true) }
+    }
+    val askAll = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+        granted(result); visited.clear(); walking = true; tick++
+    }
+    // Asked from a single row: if Android answers at once, it has stopped showing the dialog, so open the app's page.
+    var askedAt by remember { mutableStateOf(0L) }
+    val askOne = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+        granted(result); tick++
+        if (result.values.any { !it } && android.os.SystemClock.uptimeMillis() - askedAt < 400) {
+            SystemActions.start(context, Intent(AndroidSettings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:${context.packageName}")))
+        }
+    }
+    RowSurface {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            TwoLine(
+                if (missing.isEmpty()) "Everything is allowed" else "Allow what you'd like to use",
+                if (missing.isEmpty()) "Every feature is ready." else "Each one is only for the feature listed. Nothing leaves your phone. Skip any you don't need; that feature just stays off.",
+            )
+            if (missing.isNotEmpty()) Button({
+                val runtime = missing.mapNotNull { it.runtime }
+                if (runtime.isNotEmpty()) askAll.launch(runtime.toTypedArray()) else { visited.clear(); walking = true; tick++ }
+            }) { Text("Allow all") }
+        }
+    }
+    accesses.forEach { a ->
+        val ok = a !in missing
+        RowSurface {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(a.title, Modifier.weight(1f).padding(end = 12.dp), style = MaterialTheme.typography.titleMedium, color = scheme.onSurface)
+                    if (ok) Icon(Icons.Outlined.CheckCircle, "Allowed", tint = scheme.primary)
+                    else FilledTonalButton({
+                        if (a.runtime != null) { askedAt = android.os.SystemClock.uptimeMillis(); askOne.launch(arrayOf(a.runtime)) } else openAccess(context, a)
+                    }) { Text("Allow") }
+                }
+                Text("Needed for", style = MaterialTheme.typography.labelLarge, color = scheme.primary)
+                a.uses.forEachIndexed { i, use ->
+                    Text(if (a.uses.size > 1) "${i + 1}. $use" else use, style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant)
+                }
+                if (a.note != null) Text(a.note, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant.copy(alpha = .8f))
+            }
         }
     }
 }
