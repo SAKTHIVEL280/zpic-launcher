@@ -65,6 +65,8 @@ import com.zpic.launcher.ui.AppMenu
 import com.zpic.launcher.ui.DrawerController
 import com.zpic.launcher.ui.LocalHaptics
 import com.zpic.launcher.ui.HomeEditor
+import com.zpic.launcher.ui.widgetLimits
+import com.zpic.launcher.ui.widgetStartSpan
 import com.zpic.launcher.ui.HomePages
 import com.zpic.launcher.ui.WidgetSheet
 import com.zpic.launcher.ui.LocalMotion
@@ -149,13 +151,21 @@ class MainActivity : ComponentActivity() {
      */
     private fun today() = Calendar.getInstance().get(Calendar.DAY_OF_YEAR)
 
-    private fun launchOptions(view: android.view.View, b: Rect?): ActivityOptions {
+    private fun launchOptions(view: android.view.View, bounds: Rect?): ActivityOptions {
         val anim = app.settings.settings.value.appAnim
-        return when {
-            anim == AppAnim.System -> ActivityOptions.makeBasic()
-            anim == AppAnim.Rise || b == null -> ActivityOptions.makeCustomAnimation(this, R.anim.zpic_rise, R.anim.zpic_stay)
-            anim == AppAnim.Reveal -> ActivityOptions.makeClipRevealAnimation(view, b.left, b.top, b.width(), b.height())
-            else -> ActivityOptions.makeScaleUpAnimation(view, b.left, b.top, b.width(), b.height())
+        val w = view.width.coerceAtLeast(1)
+        val h = view.height.coerceAtLeast(1)
+        // Launches from search or a gesture have no icon to grow from, so they grow from the middle instead
+        // of silently falling back to another style.
+        val b = bounds?.takeIf { it.width() > 0 && it.height() > 0 }
+            ?: (w / 10).let { r -> Rect(w / 2 - r, h / 2 - r, w / 2 + r, h / 2 + r) }
+        // Android 13+ ignores custom (XML) animations for launches into another app's task, so every style
+        // is built from the scale-up and clip-reveal types that the system does honour for launchers.
+        return when (anim) {
+            AppAnim.System -> ActivityOptions.makeBasic()
+            AppAnim.Rise -> ActivityOptions.makeClipRevealAnimation(view, 0, (h * .78f).toInt(), w, (h * .22f).toInt())
+            AppAnim.Reveal -> ActivityOptions.makeClipRevealAnimation(view, b.left, b.top, b.width(), b.height())
+            AppAnim.Scale -> ActivityOptions.makeScaleUpAnimation(view, b.left, b.top, b.width(), b.height())
         }
     }
 
@@ -185,7 +195,7 @@ class MainActivity : ComponentActivity() {
         val drawer = remember { DrawerController(scope) }
         drawer.spring = motion.spatial()
         var menu by remember { mutableStateOf<AppEntry?>(null) }
-        val editor = remember { HomeEditor() }
+        val editor = homeEditor
         var widgetPage by remember { mutableIntStateOf(-1) }
         val leaving = remember { Animatable(1f) }
         val launchCount by launched.collectAsState()
@@ -254,7 +264,7 @@ class MainActivity : ComponentActivity() {
 
         Box(
             Modifier.fillMaxSize()
-                .onSizeChanged { heightPx = it.height; drawer.travel = it.height * .8f }
+                .onSizeChanged { heightPx = it.height; drawer.travel = it.height * .42f }
                 .background(Color.Black.copy(alpha = settings.wallpaperDim))
                 .pointerInput(settings.doubleTap, editor.editing) {
                     if (!editor.editing) detectTapGestures(
@@ -356,6 +366,9 @@ class MainActivity : ComponentActivity() {
         else -> resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK == android.content.res.Configuration.UI_MODE_NIGHT_YES
     }
 
+    /** Lives with the activity so a widget placed after a setup screen can be selected straight away. */
+    private val homeEditor = HomeEditor()
+
     private data class PendingWidget(val id: Int, val page: Int)
     private var pendingWidget: PendingWidget? = null
 
@@ -390,15 +403,30 @@ class MainActivity : ComponentActivity() {
         val w = pendingWidget ?: return
         pendingWidget = null
         val info = AppWidgetManager.getInstance(this).getAppWidgetInfo(w.id)
+        val id = "w${w.id}"
         app.settings.update { s ->
-            val cw = resources.displayMetrics.widthPixels / s.homeColumns
-            val ch = resources.displayMetrics.heightPixels * .8f / s.homeRows
-            val sx = kotlin.math.ceil((info?.minWidth ?: 0) / cw.toFloat()).toInt().coerceIn(2, s.homeColumns)
-            val sy = kotlin.math.ceil((info?.minHeight ?: 0) / ch).toInt().coerceIn(1, s.homeRows)
+            // The real page size, measured by the home screen, so the widget gets the cells it actually needs.
+            val page = homeEditor.pageSize
+            val cw = (if (page.width > 0) page.width.toFloat() else resources.displayMetrics.widthPixels * .92f) / s.homeColumns
+            val ch = (if (page.height > 0) page.height.toFloat() else resources.displayMetrics.heightPixels * .78f) / s.homeRows
             val items = gridOf(s)
-            val spot = findFree(items, sx, sy, w.page, Int.MAX_VALUE / 2, s.homeColumns, s.homeRows)
-            if (spot == null) s else s.copy(grid = items + HomeCell("w${w.id}", HomeKind.Widget, spot.first, spot.second, spot.third, sx, sy, widgetId = w.id))
+            var (sx, sy) = widgetStartSpan(info, cw, ch, s.homeColumns, s.homeRows)
+            var spot = findFree(items, sx, sy, w.page, Int.MAX_VALUE / 2, s.homeColumns, s.homeRows)
+            // A busy page shouldn't send the widget to another one: use the biggest size that still fits here,
+            // not its minimum, so it fills the gap it lands in instead of leaving space around it.
+            if (spot == null || spot.first != w.page) {
+                val limits = widgetLimits(info, cw, ch, s.homeColumns, s.homeRows)
+                val sizes = buildList { for (x in limits.minX..sx) for (y in limits.minY..sy) add(x to y) }
+                    .sortedWith(compareByDescending<Pair<Int, Int>> { it.first * it.second }.thenByDescending { it.first })
+                for ((x, y) in sizes) {
+                    val here = findFree(items, x, y, w.page, w.page + 1, s.homeColumns, s.homeRows) ?: continue
+                    spot = here; sx = x; sy = y
+                    break
+                }
+            }
+            if (spot == null) s else s.copy(grid = items + HomeCell(id, HomeKind.Widget, spot.first, spot.second, spot.third, sx, sy, widgetId = w.id))
         }
+        homeEditor.open(id)
     }
 
     private fun abandonWidget() {

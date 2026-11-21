@@ -141,12 +141,36 @@ fun drop(items: List<HomeCell>, moved: HomeCell, cols: Int, rows: Int): List<Hom
 }
 
 /** Corner resize in whole cells; null when the new size would hit something or leave the page. */
-fun resizedCell(items: List<HomeCell>, base: HomeCell, dCols: Int, dRows: Int, signX: Int, signY: Int, cols: Int, rows: Int): HomeCell? {
+/** How far an item may be resized, in grid cells. Widgets bring their own limits; everything else is free. */
+data class SpanLimits(val minX: Int = 1, val minY: Int = 1, val maxX: Int = Int.MAX_VALUE, val maxY: Int = Int.MAX_VALUE, val canX: Boolean = true, val canY: Boolean = true)
+
+/**
+ * The cell after dragging one edge or corner. signX/signY say which edge moves: -1 left/top, 1 right/bottom,
+ * 0 that axis stays put. Returns null when the result would leave the page, break the limits or overlap.
+ */
+fun resizedCell(
+    items: List<HomeCell>, base: HomeCell, dCols: Int, dRows: Int, signX: Int, signY: Int, cols: Int, rows: Int,
+    limits: SpanLimits = SpanLimits(),
+): HomeCell? {
     var c = base.col; var r = base.row; var sx = base.spanX; var sy = base.spanY
-    if (signX > 0) sx += dCols else { c += dCols; sx -= dCols }
-    if (signY > 0) sy += dRows else { r += dRows; sy -= dRows }
+    if (signX != 0 && limits.canX) {
+        val want = (if (signX > 0) sx + dCols else sx - dCols).coerceIn(limits.minX.coerceAtMost(sx), limits.maxX.coerceAtLeast(sx))
+        if (signX < 0) c += sx - want
+        sx = want
+    }
+    if (signY != 0 && limits.canY) {
+        val want = (if (signY > 0) sy + dRows else sy - dRows).coerceIn(limits.minY.coerceAtMost(sy), limits.maxY.coerceAtLeast(sy))
+        if (signY < 0) r += sy - want
+        sy = want
+    }
     if (sx < 1 || sy < 1 || c < 0 || r < 0 || c + sx > cols || r + sy > rows) return null
     return base.copy(col = c, row = r, spanX = sx, spanY = sy).takeIf { isFree(items, it) }
+}
+
+/** The item stretched across the whole page width at the same height, if nothing is in the way. */
+fun fullWidth(items: List<HomeCell>, cell: HomeCell, cols: Int): HomeCell? {
+    if (cell.col == 0 && cell.spanX == cols) return null
+    return cell.copy(col = 0, spanX = cols).takeIf { isFree(items, it) }
 }
 
 /** Removing a page pulls later pages in; what sat on it moves to the page before. */

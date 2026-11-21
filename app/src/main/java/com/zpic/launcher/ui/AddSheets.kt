@@ -39,6 +39,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -81,14 +82,15 @@ private fun AppChecklist(apps: List<AppEntry>, s: Settings, picked: MutableList<
 }
 
 @Composable
-private fun ElementRow(icon: ImageVector, title: String, hint: String, added: Boolean, onAdd: () -> Unit) {
+private fun ElementRow(icon: ImageVector, title: String, hint: String, added: Boolean, onEdit: (() -> Unit)? = null, onAdd: () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, null, tint = MaterialTheme.colorScheme.primary)
         Column(Modifier.weight(1f).padding(horizontal = 16.dp)) {
             Text(title, style = MaterialTheme.typography.titleMedium)
             Text(hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        if (added) Icon(Icons.Outlined.CheckCircle, "On home screen", tint = MaterialTheme.colorScheme.primary)
+        if (added && onEdit != null) FilledTonalButton(onEdit) { Text("Edit") }
+        else if (added) Icon(Icons.Outlined.CheckCircle, "On home screen", tint = MaterialTheme.colorScheme.primary)
         else FilledTonalButton(onAdd) { Text("Add") }
     }
 }
@@ -105,7 +107,7 @@ fun AddToHomeSheet(apps: List<AppEntry>, s: Settings, items: List<HomeCell>, pag
     ModalBottomSheet(onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.fillMaxHeight(.92f).navigationBarsPadding()) {
             Text("Add to home", Modifier.padding(start = 24.dp, bottom = 8.dp), style = MaterialTheme.typography.headlineSmall)
-            SecondaryTabRow(tab) {
+            SecondaryTabRow(tab, containerColor = Color.Transparent) {
                 Tab(tab == 0, { tab = 0 }, text = { Text("Apps") })
                 Tab(tab == 1, { tab = 1 }, text = { Text("Clock and more") })
             }
@@ -125,7 +127,7 @@ fun AddToHomeSheet(apps: List<AppEntry>, s: Settings, items: List<HomeCell>, pag
                 ElementRow(Icons.Outlined.Subject, "Today's intention", "The line you set in Settings", items.any { it.kind == HomeKind.Intention }) { element(HomeKind.Intention, newId("int"), s.homeColumns, appSpanY(s.homeRows)) }
                 ElementRow(Icons.Outlined.Notifications, "Notification shelf", "Apps with something waiting", items.any { it.kind == HomeKind.Shelf }) { element(HomeKind.Shelf, newId("shelf"), appSpanX(s.homeColumns), appSpanY(s.homeRows) * 2) }
                 ElementRow(Icons.Outlined.MusicNote, "Music player", "Controls while something plays", items.any { it.kind == HomeKind.Media }) { element(HomeKind.Media, newId("media"), s.homeColumns, appSpanY(s.homeRows)) }
-                ElementRow(Icons.Outlined.ViewList, "Dock", "A fixed row of apps on every page", s.showDock && s.dock.isNotEmpty(), onDock)
+                ElementRow(Icons.Outlined.ViewList, "Dock", "A row of apps on every page", s.showDock && s.dock.isNotEmpty(), onDock, onDock)
             }
         }
     }
@@ -138,7 +140,12 @@ fun DockSheet(apps: List<AppEntry>, s: Settings, onDismiss: () -> Unit, onDone: 
         Column(Modifier.fillMaxHeight(.92f).navigationBarsPadding()) {
             Text("Dock apps", Modifier.padding(start = 24.dp, bottom = 12.dp), style = MaterialTheme.typography.headlineSmall)
             AppChecklist(apps, s, picked, Modifier.weight(1f))
-            Box(Modifier.padding(24.dp, 12.dp)) { Button({ onDone(picked.toList().take(6)) }, Modifier.fillMaxWidth()) { Text("Save (up to 6)") } }
+            val over = picked.size > DOCK_MAX
+            Box(Modifier.padding(24.dp, 12.dp)) {
+                Button({ onDone(picked.toList().take(DOCK_MAX)) }, Modifier.fillMaxWidth(), enabled = !over) {
+                    Text(when { over -> "Pick up to $DOCK_MAX"; picked.isEmpty() -> "Save (empty removes the dock)"; else -> "Save ${picked.size} of $DOCK_MAX" })
+                }
+            }
         }
     }
 }

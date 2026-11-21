@@ -49,6 +49,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
@@ -132,6 +133,9 @@ import com.zpic.launcher.data.HomeKind
 import com.zpic.launcher.data.HomePreset
 import com.zpic.launcher.data.applyPreset
 import com.zpic.launcher.data.HourFormat
+import com.zpic.launcher.data.DockStyle
+import com.zpic.launcher.data.SearchPosition
+import com.zpic.launcher.data.ShelfTap
 import com.zpic.launcher.data.gridOf
 import com.zpic.launcher.data.withShelf
 import com.zpic.launcher.data.IconShape
@@ -152,6 +156,11 @@ import com.zpic.launcher.system.WallpaperArt
 import com.zpic.launcher.system.WallpaperTarget
 import com.zpic.launcher.ui.AppIcon
 import com.zpic.launcher.ui.ClockFace
+import com.zpic.launcher.ui.DOCK_MAX
+import com.zpic.launcher.ui.DockSheet
+import com.zpic.launcher.ui.alignOf
+import com.zpic.launcher.ui.clockAlignment
+import com.zpic.launcher.ui.horizontal
 import com.zpic.launcher.ui.FitBox
 import com.zpic.launcher.ui.LocalHaptics
 import com.zpic.launcher.ui.LocalMotion
@@ -201,7 +210,8 @@ private val pages = listOf(
     Page("Icons", "Adaptive style, shape, icon packs", Icons.Outlined.Category),
     Page("Wallpaper", "60 designs you can recolour, lock screen", Icons.Outlined.Wallpaper),
     Page("Gestures", "Swipes and double-tap", Icons.Outlined.Swipe),
-    Page("Focus", "Pauses, hidden apps, notification shelf", Icons.Outlined.SelfImprovement),
+    Page("Notifications", "Notification shelf and dots", Icons.Outlined.Notifications),
+    Page("Focus", "Pauses, focus modes, hidden apps", Icons.Outlined.SelfImprovement),
     Page("Backup", "Save or restore your setup", Icons.Outlined.Backup),
 )
 
@@ -257,6 +267,7 @@ private fun SettingsRoot(settings: Settings, direct: String?, finish: () -> Unit
                     "Icons" -> IconsPage(settings, update)
                     "Wallpaper" -> WallpaperPage(settings, update)
                     "Gestures" -> GesturesPage(settings, update)
+                    "Notifications" -> NotificationsPage(settings, update)
                     "Focus" -> FocusPage(settings, update)
                     "Backup" -> BackupPage()
                 }
@@ -341,7 +352,7 @@ private fun Index(go: (String) -> Unit) {
             }
         }
     }
-    val shapes = listOf(MaterialShapes.Cookie9Sided, MaterialShapes.Clover4Leaf, MaterialShapes.Sunny, MaterialShapes.Cookie6Sided, MaterialShapes.Pill, MaterialShapes.Arch, MaterialShapes.Gem, MaterialShapes.Flower, MaterialShapes.Ghostish)
+    val shapes = listOf(MaterialShapes.Cookie9Sided, MaterialShapes.Clover4Leaf, MaterialShapes.Sunny, MaterialShapes.Cookie6Sided, MaterialShapes.Pill, MaterialShapes.Arch, MaterialShapes.Gem, MaterialShapes.Flower, MaterialShapes.Ghostish, MaterialShapes.Puffy)
     val badges = listOf(
         colors.primaryContainer to colors.onPrimaryContainer, colors.tertiaryContainer to colors.onTertiaryContainer, colors.secondaryContainer to colors.onSecondaryContainer,
     )
@@ -351,7 +362,7 @@ private fun Index(go: (String) -> Unit) {
             RowSurface(Modifier.clickable { haptics?.tick(); go(page.title) }) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     val (bg, fg) = badges[i % badges.size]
-                    val shape = shapes[i].toShape()
+                    val shape = shapes[i % shapes.size].toShape()
                     Box(Modifier.size(44.dp).clip(shape).background(bg), Alignment.Center) { Icon(page.icon, null, Modifier.size(22.dp), tint = fg) }
                     TwoLine(page.title, page.hint, Modifier.padding(start = 16.dp).weight(1f))
                     Icon(Icons.Outlined.ChevronRight, null, tint = colors.onSurfaceVariant)
@@ -488,7 +499,7 @@ private fun Look(s: Settings, up: Up) {
         Choice("Opening apps", AppAnim.entries, s.appAnim, {
             when (it) {
                 AppAnim.Scale -> "Grow from the icon"
-                AppAnim.Rise -> "Rise and fade"
+                AppAnim.Rise -> "Rise from the bottom"
                 AppAnim.Reveal -> "Reveal from the icon"
                 AppAnim.System -> "Phone's default"
             }
@@ -518,7 +529,7 @@ private fun ClockPage(s: Settings, up: Up) {
     val colors = MaterialTheme.colorScheme
     Group {
         Box(Modifier.fillMaxWidth().height(240.dp).background(Color(0xFF15171C)).padding(20.dp), Alignment.Center) {
-            FitBox(1f, Modifier.fillMaxSize(), alignX = .5f) { ClockFace(s, Color.White, 0, Alignment.Start) }
+            FitBox(1f, Modifier.fillMaxSize(), alignX = alignOf(s.clockAlignment())) { ClockFace(s, Color.White, 0, s.clockAlignment().horizontal()) }
         }
     }
     Group("Style") {
@@ -526,12 +537,24 @@ private fun ClockPage(s: Settings, up: Up) {
     }
     Group("Customize") {
         Choice("Weight", listOf<ClockWeight?>(null) + ClockWeight.entries, s.clockWeight, { it?.name ?: "Style default" }, onPick = { v -> up { it.copy(clockWeight = v) } })
+        Choice("Alignment", listOf<HomeAlign?>(null) + HomeAlign.entries, s.clockAlign, {
+            when (it) { null -> "Same as pinned apps"; HomeAlign.Start -> "Left"; HomeAlign.Center -> "Centre"; HomeAlign.End -> "Right" }
+        }, onPick = { v -> up { it.copy(clockAlign = v) } })
         Choice("Colour", ClockTint.entries, s.clockTint, { when (it) { ClockTint.Wallpaper -> "Wallpaper colour"; ClockTint.Ink -> "White or black"; else -> "Theme ${it.name.lowercase()}" } }, onPick = { v -> up { it.copy(clockTint = v) } })
     }
     Group("Time and date") {
         Choice("Hour format", HourFormat.entries, s.hourFormat, { when (it) { HourFormat.System -> "System"; HourFormat.H12 -> "12-hour"; HourFormat.H24 -> "24-hour" } }, onPick = { v -> up { it.copy(hourFormat = v) } })
-        Toggle("Leading zero", "07 instead of 7", s.leadingZero) { v -> up { it.copy(leadingZero = v) } }
-        Toggle("AM / PM", null, s.showAmPm) { v -> up { it.copy(showAmPm = v) } }
+        val is24 = when (s.hourFormat) {
+            HourFormat.System -> android.text.format.DateFormat.is24HourFormat(LocalContext.current)
+            HourFormat.H12 -> false
+            HourFormat.H24 -> true
+        }
+        // A 24-hour clock always has its zero and never has AM/PM, so these would look broken there.
+        if (is24) Note("Leading zero and AM / PM", "Only apply to a 12-hour clock. Set Hour format to 12-hour to use them.")
+        else {
+            Toggle("Leading zero", "07 instead of 7", s.leadingZero) { v -> up { it.copy(leadingZero = v) } }
+            Toggle("AM / PM", null, s.showAmPm) { v -> up { it.copy(showAmPm = v) } }
+        }
         Toggle("Date", null, s.showDate) { v -> up { it.copy(showDate = v) } }
         if (s.showDate) {
             Choice("Date format", DateStyle.entries, s.dateStyle, onPick = { v -> up { it.copy(dateStyle = v) } })
@@ -558,7 +581,18 @@ private fun HomePage(s: Settings, up: Up) {
         Toggle("App labels", null, s.homeLabels) { v -> up { it.copy(homeLabels = v) } }
         Toggle("Lock layout", "Stops items being moved by accident", s.lockLayout) { v -> up { it.copy(lockLayout = v) } }
         Toggle("Hide status bar", "Swipe down from the edge to see it", s.hideStatusBar) { v -> up { it.copy(hideStatusBar = v) } }
-        if (s.dock.isNotEmpty()) Toggle("Dock", "Your fixed row of apps", s.showDock) { v -> up { it.copy(showDock = v) } }
+    }
+    Group("Dock") {
+        var picking by remember { mutableStateOf(false) }
+        val allApps by (LocalContext.current.applicationContext as ZpicApp).apps.apps.collectAsState()
+        Toggle("Show dock", if (s.dock.isEmpty()) "Choose apps to turn it on" else "${s.dock.size} apps, on every page", s.showDock && s.dock.isNotEmpty()) { v ->
+            if (v && s.dock.isEmpty()) picking = true else up { it.copy(showDock = v) }
+        }
+        Note("Dock apps", "Up to $DOCK_MAX. Past five, the dock scrolls sideways. You can also add or remove an app from its long-press menu.") {
+            FilledTonalButton({ picking = true }) { Text(if (s.dock.isEmpty()) "Choose apps" else "Edit apps") }
+        }
+        if (s.showDock && s.dock.isNotEmpty()) Choice("Background", DockStyle.entries, s.dockStyle, { when (it) { DockStyle.Plain -> "None"; DockStyle.Pill -> "Pill"; DockStyle.Bar -> "Card" } }, onPick = { v -> up { it.copy(dockStyle = v) } })
+        if (picking) DockSheet(allApps, s, { picking = false }) { keys -> up { it.copy(dock = keys, showDock = keys.isNotEmpty()) }; picking = false }
     }
     Group("Intention") {
         RowSurface {
@@ -648,6 +682,7 @@ private fun AppsPage(s: Settings, up: Up) {
     }
     Group("Search") {
         PermissionToggle("Search contacts", "Stays on your phone", Manifest.permission.READ_CONTACTS, s.searchContacts) { v -> up { it.copy(searchContacts = v) } }
+        Choice("Search bar", SearchPosition.entries, s.searchPosition, { when (it) { SearchPosition.Bottom -> "Bottom"; SearchPosition.Top -> "Top" } }, onPick = { v -> up { it.copy(searchPosition = v) } })
         Toggle("Open keyboard with apps", "Start typing as soon as the page opens", s.autoKeyboard) { v -> up { it.copy(autoKeyboard = v) } }
         Toggle("Open the only match", "Launch as soon as search finds one app", s.autoLaunch) { v -> up { it.copy(autoLaunch = v) } }
     }
@@ -916,10 +951,58 @@ private fun FocusPage(s: Settings, up: Up) {
             FilledTonalButton({ chooser = "hide" }) { Text("Choose apps (${s.hidden.size})") }
         }
     }
+    chooser?.let { mode ->
+        val initial = when { mode == "pause" -> s.distracting; mode.startsWith("mode:") -> s.modes.firstOrNull { it.id == mode.drop(5) }?.hidden.orEmpty(); else -> s.hidden }
+        val title = when { mode == "pause" -> "Pause before opening"; mode.startsWith("mode:") -> "Hide during this mode"; else -> "Hidden apps" }
+        AppPickDialog(title, apps, s, initial, { chooser = null }) { set ->
+            up { when { mode == "pause" -> it.copy(distracting = set); mode.startsWith("mode:") -> it.copy(modes = it.modes.map { x -> if (x.id == mode.drop(5)) x.copy(hidden = set) else x }); else -> it.copy(hidden = set, favorites = it.favorites - set) } }
+            chooser = null
+        }
+    }
+}
+
+@Composable
+private fun AppPickDialog(title: String, apps: List<AppEntry>, s: Settings, initial: Set<String>, onDismiss: () -> Unit, onDone: (Set<String>) -> Unit) {
+    val picked = remember { mutableStateListOf<String>().apply { addAll(initial) } }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            LazyColumn(Modifier.height(380.dp)) {
+                items(apps, key = { it.key }) { a ->
+                    val on = a.key in picked
+                    Row(
+                        Modifier.fillMaxWidth().clickable { if (on) picked.remove(a.key) else picked.add(a.key) }.padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(a.label(s), Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = if (on) FontWeight.Medium else FontWeight.Normal)
+                        RadioButton(on, null)
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton({ onDone(picked.toSet()) }) { Text("Done") } },
+        dismissButton = { TextButton(onDismiss) { Text("Cancel") } },
+    )
+}
+
+@Composable
+private fun NotificationsPage(s: Settings, up: Up) {
+    val context = LocalContext.current
+    val app = context.applicationContext as ZpicApp
+    val apps by app.apps.apps.collectAsState()
+    var chooser by remember { mutableStateOf<String?>(null) }
     Group("Notification shelf") {
         val shelf = gridOf(s).any { it.kind == HomeKind.Shelf }
         Toggle("Show on home screen", "Apps with notifications waiting sit in a small shelf you can move and resize", shelf) { v ->
             up { it.copy(grid = withShelf(gridOf(it), v, it.homeMain, it.homeColumns, it.homeRows)) }
+        }
+        if (shelf) {
+            Choice("Tapping an app", ShelfTap.entries, s.shelfTap, { when (it) { ShelfTap.Peek -> "Notifications"; ShelfTap.Open -> "Open app" } }, onPick = { v -> up { it.copy(shelfTap = v) } })
+            Choice("Order", listOf(true, false), s.shelfNewestFirst, { if (it) "Newest first" else "Oldest first" }, onPick = { v -> up { it.copy(shelfNewestFirst = v) } })
+            Choice("Alignment", HomeAlign.entries, s.shelfAlign, {
+                when (it) { HomeAlign.Start -> "Start"; HomeAlign.Center -> "Middle"; HomeAlign.End -> "End" }
+            }, hint = "Top to bottom on a tall shelf, left to right on a wide one", onPick = { v -> up { it.copy(shelfAlign = v) } })
         }
         if (shelf) Note("Leave some apps out", "${s.shelfExcluded.size} hidden from the shelf") {
             FilledTonalButton({ chooser = "shelf" }) { Text("Choose apps") }
@@ -938,34 +1021,9 @@ private fun FocusPage(s: Settings, up: Up) {
             }) { Text("Allow notification access") }
         }
     }
-    chooser?.let { mode ->
-        val picked = remember { mutableStateListOf<String>().apply { addAll(when { mode == "pause" -> s.distracting; mode == "shelf" -> s.shelfExcluded; mode.startsWith("mode:") -> s.modes.firstOrNull { it.id == mode.drop(5) }?.hidden.orEmpty(); else -> s.hidden }) } }
-        AlertDialog(
-            onDismissRequest = { chooser = null },
-            title = { Text(when { mode == "pause" -> "Pause before opening"; mode == "shelf" -> "Leave out of the shelf"; mode.startsWith("mode:") -> "Hide during this mode"; else -> "Hidden apps" }) },
-            text = {
-                LazyColumn(Modifier.height(380.dp)) {
-                    items(apps, key = { it.key }) { a ->
-                        val on = a.key in picked
-                        Row(
-                            Modifier.fillMaxWidth().clickable { if (on) picked.remove(a.key) else picked.add(a.key) }.padding(vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(a.label(s), Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = if (on) FontWeight.Medium else FontWeight.Normal)
-                            RadioButton(on, null)
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton({
-                    val set = picked.toSet()
-                    up { when { mode == "pause" -> it.copy(distracting = set); mode == "shelf" -> it.copy(shelfExcluded = set); mode.startsWith("mode:") -> it.copy(modes = it.modes.map { x -> if (x.id == mode.drop(5)) x.copy(hidden = set) else x }); else -> it.copy(hidden = set, favorites = it.favorites - set) } }
-                    chooser = null
-                }) { Text("Done") }
-            },
-            dismissButton = { TextButton({ chooser = null }) { Text("Cancel") } },
-        )
+    if (chooser == "shelf") AppPickDialog("Leave out of the shelf", apps, s, s.shelfExcluded, { chooser = null }) { set ->
+        up { it.copy(shelfExcluded = set) }
+        chooser = null
     }
 }
 

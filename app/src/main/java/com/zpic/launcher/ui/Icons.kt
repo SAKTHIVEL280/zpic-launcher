@@ -9,6 +9,7 @@ import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -98,14 +99,16 @@ fun AppIcon(
     val engine = (LocalContext.current.applicationContext as ZpicApp).icons
     val label = app.label(settings)
     val override = settings.iconOverrides[app.key] ?: IconOverride.Auto
-    val bitmap by produceState<ImageBitmap?>(null, app.key, label, settings.iconStyle, settings.iconPack, sizeDp, colors, override) {
+    val custom by engine.customVersion.collectAsState()
+    val bitmap by produceState<ImageBitmap?>(null, app.key, label, settings.iconStyle, settings.iconPack, sizeDp, colors, override, if (override == IconOverride.Custom) custom else 0) {
         value = engine.load(app, label, settings.iconStyle, settings.iconPack, engine.pxFor(sizeDp), colors, override)
     }
     val motion = LocalMotion.current
     val morph by animateFloatAsState(if (pressed) 1f else 0f, motion.spatial(), label = "press")
     val scale by animateFloatAsState(if (pressed) 0.9f else 1f, motion.fastSpatial(), label = "scale")
     val morphShape = morphFor(settings.iconShape)
-    val clip = (settings.iconStyle != IconStyle.Ghost || override == IconOverride.Original || override == IconOverride.Monogram) && settings.iconPack == null
+    val clip = override == IconOverride.Custom ||
+        (settings.iconStyle != IconStyle.Ghost || override == IconOverride.Original || override == IconOverride.Monogram) && settings.iconPack == null
     Box(modifier.size(sizeDp.dp).graphicsLayer {
         scaleX = scale
         scaleY = scale

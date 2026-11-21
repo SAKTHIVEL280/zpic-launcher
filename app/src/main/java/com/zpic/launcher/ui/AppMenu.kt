@@ -1,6 +1,11 @@
 package com.zpic.launcher.ui
 
 import android.content.Context
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import android.content.pm.LauncherApps
 import android.content.pm.ShortcutInfo
 import androidx.compose.foundation.clickable
@@ -13,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ViewWeek
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.DriveFileRenameOutline
 import androidx.compose.material.icons.outlined.FolderOpen
@@ -62,6 +68,7 @@ private fun IconOverride.title() = when (this) {
     IconOverride.Glyph -> "Logo in theme colour"
     IconOverride.Monogram -> "Letter"
     IconOverride.Original -> "Original colours"
+    IconOverride.Custom -> "Picture from gallery"
 }
 
 private fun shortcuts(context: Context, app: AppEntry): List<ShortcutInfo> {
@@ -85,6 +92,16 @@ fun AppMenu(app: AppEntry, settings: Settings, repo: SettingsRepo, onPlace: ((Ap
     val shortcutList = remember(app) { shortcuts(context, app) }
     val done = onDismiss
     val colors = rememberIconColors(MaterialTheme.colorScheme.onSurface, settings.glyphInk)
+    val engine = (context.applicationContext as ZpicApp).icons
+    val scope = rememberCoroutineScope()
+    val look = settings.iconOverrides[app.key] ?: IconOverride.Auto
+    val pickPicture = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) scope.launch {
+            if (engine.saveCustom(app.key, uri)) repo.update { it.copy(iconOverrides = it.iconOverrides + (app.key to IconOverride.Custom)) }
+            else SystemActions.toast(context, "Couldn't use that picture")
+        }
+        styling = false; done()
+    }
     ModalBottomSheet(onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.verticalScroll(rememberScrollState()).navigationBarsPadding().padding(bottom = 12.dp)) {
             Row(Modifier.padding(horizontal = 24.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -104,11 +121,19 @@ fun AppMenu(app: AppEntry, settings: Settings, repo: SettingsRepo, onPlace: ((Ap
                 done()
             }
             onPlace?.let { place -> Item(Icons.Outlined.Home, "Add to home screen") { place(app); done() } }
+            val docked = settings.showDock && app.key in settings.dock
+            if (docked || settings.dock.size < DOCK_MAX) Item(Icons.Outlined.ViewWeek, if (docked) "Remove from dock" else "Add to dock") {
+                repo.update {
+                    val list = if (it.showDock) it.dock else emptyList()
+                    if (docked) it.copy(dock = list - app.key, showDock = list.size > 1)
+                    else it.copy(dock = (list - app.key + app.key).take(DOCK_MAX), showDock = true)
+                }
+                done()
+            }
             Item(Icons.Outlined.DriveFileRenameOutline, "Rename") { renaming = true }
             Item(Icons.Outlined.CreateNewFolder, "Add to app page folder") { foldering = true }
             val second = settings.appDouble[app.key]?.let { k -> allApps.firstOrNull { it.key == k } }
             Item(Icons.Outlined.TouchApp, if (second != null) "Double-tap opens ${second.label(settings)}" else "Double-tap on home opens…") { doubling = true }
-            val look = settings.iconOverrides[app.key] ?: IconOverride.Auto
             Item(Icons.Outlined.AutoFixHigh, "Icon: ${look.title()}") { styling = true }
             val flagged = app.key in settings.distracting
             Item(Icons.Outlined.SelfImprovement, if (flagged) "Remove pause" else "Pause before opening") {
@@ -172,7 +197,9 @@ fun AppMenu(app: AppEntry, settings: Settings, repo: SettingsRepo, onPlace: ((Ap
         text = {
             Column {
                 IconOverride.entries.forEach { o ->
-                    Text(o.title(), Modifier.fillMaxWidth().clickable {
+                    Text(o.title() + if (o == IconOverride.Custom && look == IconOverride.Custom) " (change)" else "", Modifier.fillMaxWidth().clickable {
+                        if (o == IconOverride.Custom) { pickPicture.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)); return@clickable }
+                        if (look == IconOverride.Custom) engine.deleteCustom(app.key)
                         repo.update { it.copy(iconOverrides = if (o == IconOverride.Auto) it.iconOverrides - app.key else it.iconOverrides + (app.key to o)) }
                         styling = false; done()
                     }.padding(vertical = 12.dp))

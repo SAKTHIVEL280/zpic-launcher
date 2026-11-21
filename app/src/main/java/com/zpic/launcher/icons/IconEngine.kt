@@ -38,6 +38,33 @@ class IconEngine(private val context: Context) {
 
     fun clear() = cache.evictAll()
 
+    /** Bumped whenever a picked picture changes, so icons showing it reload. */
+    val customVersion = kotlinx.coroutines.flow.MutableStateFlow(0)
+
+    private fun customFile(key: String) = java.io.File(context.filesDir, "icons/" + key.replace(Regex("[^A-Za-z0-9._-]"), "_") + ".png")
+
+    /** Saves a picture from the gallery as this app's icon: centre-cropped square, at most 256 px. */
+    suspend fun saveCustom(key: String, uri: android.net.Uri): Boolean = withContext(Dispatchers.IO) {
+        runCatching {
+            val source = android.graphics.ImageDecoder.createSource(context.contentResolver, uri)
+            val picked = android.graphics.ImageDecoder.decodeBitmap(source) { d, info, _ ->
+                d.allocator = android.graphics.ImageDecoder.ALLOCATOR_SOFTWARE
+                val longest = maxOf(info.size.width, info.size.height)
+                if (longest > 1024) d.setTargetSampleSize(longest / 1024)
+            }
+            val side = minOf(picked.width, picked.height)
+            val square = Bitmap.createBitmap(picked, (picked.width - side) / 2, (picked.height - side) / 2, side, side)
+            val out = Bitmap.createScaledBitmap(square, minOf(side, 256), minOf(side, 256), true)
+            val file = customFile(key)
+            file.parentFile?.mkdirs()
+            file.outputStream().use { out.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            cache.evictAll()
+            customVersion.value++
+        }.isSuccess
+    }
+
+    fun deleteCustom(key: String) { customFile(key).delete(); cache.evictAll(); customVersion.value++ }
+
     fun installedPacks(): List<IconPackInfo> {
         val pm = context.packageManager
         return listOf("org.adw.launcher.THEMES", "com.novalauncher.THEME", "com.teslacoilsw.launcher.THEME")
@@ -49,12 +76,15 @@ class IconEngine(private val context: Context) {
 
     suspend fun load(app: AppEntry, label: String, style: IconStyle, pack: String?, px: Int, c: IconColors, override: IconOverride = IconOverride.Auto): ImageBitmap =
         withContext(Dispatchers.Default) {
-            val id = "${app.key}|$label|$style|$pack|$px|${c.hashCode()}|$override"
+            val id = "${app.key}|$label|$style|$pack|$px|${c.hashCode()}|$override|${if (override == IconOverride.Custom) customFile(app.key).lastModified() else 0}"
             cache.get(id) ?: render(app, label, style, pack, px, c, override).asImageBitmap().also { cache.put(id, it) }
         }
 
     private fun render(app: AppEntry, label: String, style: IconStyle, pack: String?, s: Int, c: IconColors, override: IconOverride): Bitmap {
         if (override == IconOverride.Monogram) return monogram(label, s, c, c.tonalBg, c.tonalFg)
+        if (override == IconOverride.Custom) customFile(app.key).takeIf { it.exists() }?.let { f ->
+            android.graphics.BitmapFactory.decodeFile(f.path)?.let { return Bitmap.createScaledBitmap(it, s, s, true) }
+        }
         val icon = app.info.getIcon(0)
         if (override == IconOverride.Original) return full(icon, s, c)
         if (override == IconOverride.Auto) pack?.let { packDrawable(it, app) }?.let { d -> return drawPlain(d, s) }
