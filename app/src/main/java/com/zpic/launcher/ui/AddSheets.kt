@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.BatteryStd
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Subject
@@ -101,7 +103,16 @@ fun AddToHomeSheet(apps: List<AppEntry>, s: Settings, items: List<HomeCell>, pag
     var tab by remember { mutableIntStateOf(0) }
     val picked = remember { mutableStateListOf<String>() }
     fun element(kind: HomeKind, id: String, spanX: Int, spanY: Int) {
-        val spot = findFree(items, spanX, spanY, page, Int.MAX_VALUE / 2, s.homeColumns, s.homeRows) ?: return
+        // On the page being looked at if at all possible, at the largest size that fits there, down to half
+        // the width and an app's height. Only a full page sends it to the next one.
+        val cols = s.homeColumns; val rows = s.homeRows
+        val sizes = buildList { for (x in spanX downTo (spanX / 2).coerceAtLeast(1)) for (y in spanY downTo appSpanY(rows).coerceAtMost(spanY)) add(x to y) }
+            .sortedWith(compareByDescending<Pair<Int, Int>> { it.first * it.second }.thenByDescending { it.first })
+        for ((x, y) in sizes) {
+            val here = findFree(items, x, y, page, page + 1, cols, rows) ?: continue
+            onDone(items + HomeCell(id, kind, here.first, here.second, here.third, x, y)); return
+        }
+        val spot = findFree(items, spanX, spanY, page, Int.MAX_VALUE / 2, cols, rows) ?: return
         onDone(items + HomeCell(id, kind, spot.first, spot.second, spot.third, spanX, spanY))
     }
     ModalBottomSheet(onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
@@ -109,7 +120,7 @@ fun AddToHomeSheet(apps: List<AppEntry>, s: Settings, items: List<HomeCell>, pag
             Text("Add to home", Modifier.padding(start = 24.dp, bottom = 8.dp), style = MaterialTheme.typography.headlineSmall)
             SecondaryTabRow(tab, containerColor = Color.Transparent) {
                 Tab(tab == 0, { tab = 0 }, text = { Text("Apps") })
-                Tab(tab == 1, { tab = 1 }, text = { Text("Clock and more") })
+                Tab(tab == 1, { tab = 1 }, text = { Text("Zpic widgets") })
             }
             if (tab == 0) {
                 AppChecklist(apps, s, picked, Modifier.weight(1f).padding(top = 12.dp))
@@ -126,7 +137,9 @@ fun AddToHomeSheet(apps: List<AppEntry>, s: Settings, items: List<HomeCell>, pag
                 ElementRow(Icons.Outlined.ViewList, "Pinned list", "Your pinned apps as a tidy list", items.any { it.kind == HomeKind.Pins }) { element(HomeKind.Pins, newId("pins"), (s.homeColumns * 3 / 5).coerceAtLeast(2), s.homeRows / 3) }
                 ElementRow(Icons.Outlined.Subject, "Today's intention", "The line you set in Settings", items.any { it.kind == HomeKind.Intention }) { element(HomeKind.Intention, newId("int"), s.homeColumns, appSpanY(s.homeRows)) }
                 ElementRow(Icons.Outlined.Notifications, "Notification shelf", "Apps with something waiting", items.any { it.kind == HomeKind.Shelf }) { element(HomeKind.Shelf, newId("shelf"), appSpanX(s.homeColumns), appSpanY(s.homeRows) * 2) }
-                ElementRow(Icons.Outlined.MusicNote, "Music player", "Controls while something plays", items.any { it.kind == HomeKind.Media }) { element(HomeKind.Media, newId("media"), s.homeColumns, appSpanY(s.homeRows)) }
+                ElementRow(Icons.Outlined.MusicNote, "Music player", "Disc, album art, bar or minimal. Play resumes your last song", false) { element(HomeKind.Media, newId("media"), s.homeColumns, appSpanY(s.homeRows) * 3 / 2 + 1) }
+                ElementRow(Icons.Outlined.BatteryStd, "Battery", "Ring, bar or a big number", false) { element(HomeKind.Battery, newId("bat"), s.homeColumns / 2, appSpanY(s.homeRows) * 3 / 2 + 1) }
+                ElementRow(Icons.Outlined.CalendarMonth, "Date", "Big date, your next event or the month", false) { element(HomeKind.Calendar, newId("date"), s.homeColumns / 2, appSpanY(s.homeRows) * 3 / 2 + 1) }
                 ElementRow(Icons.Outlined.ViewList, "Dock", "A row of apps on every page", s.showDock && s.dock.isNotEmpty(), onDock, onDock)
             }
         }

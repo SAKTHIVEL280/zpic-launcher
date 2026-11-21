@@ -211,7 +211,7 @@ class MainActivity : ComponentActivity() {
         var pending by remember { mutableStateOf<Pair<AppEntry, Rect?>?>(null) }
         var focusSearch by remember { mutableStateOf(false) }
         var heightPx by remember { mutableIntStateOf(1) }
-        val light = wallpaperIsLight(settings.wallpaperDim)
+        val light = wallpaperIsLight(settings.wallpaperDim, settings.wallLuma)
         val ink = if (light) Color(0xFF1A1B20) else Color.White
         val iconColors = rememberIconColors(ink, settings.glyphInk, onWallpaper = true)
 

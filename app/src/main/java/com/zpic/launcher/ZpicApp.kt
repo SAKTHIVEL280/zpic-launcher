@@ -15,6 +15,8 @@ class ZpicApp : Application() {
     val settings by lazy { SettingsRepo(this, scope) }
     val apps by lazy { AppRepository(this, scope) }
     val icons by lazy { IconEngine(this) }
-    val wallpaper by lazy { WallpaperController(this) { seed -> settings.update { it.copy(wallpaperSeed = seed) } } }
+    val wallpaper by lazy {
+        WallpaperController(this, { seed -> settings.update { it.copy(wallpaperSeed = seed) } }, { luma -> settings.update { it.copy(wallLuma = luma) } })
+    }
     val widgetHost by lazy { ZpicWidgetHost(this) }
 }

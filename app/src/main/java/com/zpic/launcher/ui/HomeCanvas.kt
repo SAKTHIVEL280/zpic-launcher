@@ -1,5 +1,8 @@
 package com.zpic.launcher.ui
 
+import androidx.compose.ui.layout.findRootCoordinates
+import androidx.compose.ui.graphics.drawscope.scale
+import com.zpic.launcher.system.inkFor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.Image
 import androidx.core.view.drawToBitmap
@@ -9,6 +12,7 @@ import android.os.Build
 import android.util.SizeF
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.draw.shadow
+import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.SwapHoriz
 import com.zpic.launcher.data.SpanLimits
 import com.zpic.launcher.data.fullWidth
@@ -270,6 +274,9 @@ private fun OneWidget(id: Int, box: DpSize) {
     )
 }
 
+/** The readable ink for a rectangle of the page (in page pixels), from the measured wallpaper; null if unknown. */
+internal val LocalInkAt = staticCompositionLocalOf<(Rect) -> com.zpic.launcher.system.RegionInk?> { { null } }
+
 /** Shelf taps go up to the home screen, which shows the notifications above everything else. */
 internal val LocalShelfPeek = staticCompositionLocalOf<(AppEntry) -> Unit> { {} }
 
@@ -415,7 +422,7 @@ private fun CellContent(
         HomeKind.App -> apps.firstOrNull { it.key == cell.app }?.let { a ->
             SingleApp(a, s, s.dots && a.packageName in dots, ink, colors, icon, onLaunch, s.appDouble[a.key]?.let { k -> apps.firstOrNull { it.key == k } })
         }
-        HomeKind.Media -> FitBox(2f, alignX = .5f) { MediaCell() }
+        HomeKind.Media, HomeKind.Battery, HomeKind.Calendar -> BuiltInWidget(cell, box, ink, s)
         HomeKind.Folder -> FolderTile(cell, apps, s, ink, colors, icon) { onFolder(cell) }
         HomeKind.Shelf -> {
             // A wide cell gets a row; the alignment runs along whichever way the shelf grows.
@@ -597,10 +604,26 @@ private fun PageCanvas(
                     ),
             ) {
                 // Text-like items get a little inset, so they never touch the page edge or sit under the resize handles.
-                val inset = cell.kind in setOf(HomeKind.Clock, HomeKind.Pins, HomeKind.Intention, HomeKind.Shelf, HomeKind.Media)
+                val inset = cell.kind in setOf(HomeKind.Clock, HomeKind.Pins, HomeKind.Intention, HomeKind.Shelf)
                 val pad = if (inset) DpSize(10.dp, 6.dp) else DpSize(0.dp, 0.dp)
+                // Text sitting straight on the wallpaper takes its colour from the wallpaper right behind it, and a
+                // soft shade when even the better colour isn't readable enough there (busy or mid-tone areas).
+                // Items with nothing to show yet (no pinned apps, no intention) get no shade either.
+                val empty = (cell.kind == HomeKind.Pins && s.favorites.isEmpty()) || (cell.kind == HomeKind.Intention && s.intention.isBlank())
+                val onWallpaper = !empty && (cell.kind in setOf(HomeKind.Clock, HomeKind.Pins, HomeKind.Intention) || (cell.kind.isBuiltInWidget && cell.currentLook() == WidgetLook.Clear))
+                val region = if (onWallpaper) LocalInkAt.current(Rect(at.x.toFloat(), at.y.toFloat(), at.x + cell.spanX * cwPx, at.y + cell.spanY * chPx)) else null
+                val itemInk = region?.ink ?: ink
+                val protect by animateFloatAsState(region?.protect ?: 0f, motion.effects(), label = "protect")
+                if (protect > .02f) Canvas(Modifier.matchParentSize()) {
+                    val shade = if (itemInk == Color.White) Color.Black else Color.White
+                    val a = .42f * protect
+                    val area = this.size
+                    scale(area.width / area.height.coerceAtLeast(1f), 1f) {
+                        drawCircle(Brush.radialGradient(listOf(shade.copy(alpha = a), shade.copy(alpha = a * .7f), Color.Transparent), center, area.height * .72f), area.height * .72f)
+                    }
+                }
                 Box(Modifier.padding(horizontal = pad.width, vertical = pad.height)) {
-                    CellContent(cell, DpSize(size.width - pad.width * 2, size.height - pad.height * 2), apps, s, dots, waiting, ink, colors, resumeTick, homeIconSize(s, cell.spanX, cell.spanY, cw, ch), onLaunch, onMenu, onFolder)
+                    CellContent(cell, DpSize(size.width - pad.width * 2, size.height - pad.height * 2), apps, s, dots, waiting, itemInk, colors, resumeTick, homeIconSize(s, cell.spanX, cell.spanY, cw, ch), onLaunch, onMenu, onFolder)
                 }
                 if (editor.editing) {
                     // Launcher items show their bounds while arranging, so empty or quiet ones can still be found.
@@ -772,6 +795,7 @@ fun HomePages(
     var addSheet by remember { mutableStateOf(false) }
     var dockSheet by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf<HomeCell?>(null) }
+    var styling by remember { mutableStateOf<HomeCell?>(null) }
     var undo by remember { mutableStateOf<HomeCell?>(null) }
     var undoTick by remember { mutableStateOf(0) }
     val current = rememberUpdatedState(items)
@@ -782,6 +806,16 @@ fun HomePages(
     // so nothing at the bottom of the page ends up hidden (and stuck) under the toolbar on any phone shape.
     val zoomT by animateFloatAsState(if (editor.editing) 1f else 0f, motion.settle(), label = "zoom")
     var frame by remember { mutableStateOf(Rect.Zero) }
+    var screen by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+    val luma = measuredWallpaper(s.wallLuma)
+    val fallback = if (luma == null) unmeasuredProtection() * (1f - s.wallpaperDim * 2f).coerceAtLeast(0f) else 0f
+    val inkAt: (Rect) -> com.zpic.launcher.system.RegionInk? = remember(luma, frame, screen, s.wallpaperDim, fallback, ink) {
+        { r ->
+            if (luma == null) com.zpic.launcher.system.RegionInk(ink, fallback).takeIf { fallback > 0f }
+            else if (screen.width <= 0 || screen.height <= 0) null
+            else luma.inkFor(Rect((frame.left + r.left) / screen.width, (frame.top + r.top) / screen.height, (frame.left + r.right) / screen.width, (frame.top + r.bottom) / screen.height), s.wallpaperDim)
+        }
+    }
     var topBarBottom by remember { mutableFloatStateOf(0f) }
     var toolbarTop by remember { mutableFloatStateOf(0f) }
     val gap = with(LocalDensity.current) { 12.dp.toPx() }
@@ -817,7 +851,7 @@ fun HomePages(
                     if (c.stack.isNotEmpty()) add(Triple(Icons.Outlined.Remove, "Unstack") { save(unstack(current.value, c.id, s.homeColumns, s.homeRows)) })
                     if (AppWidgetManager.getInstance(context).getAppWidgetInfo(c.widgetId)?.configure != null) add(Triple(Icons.Outlined.Tune, "Setup") { onConfigure(c) })
                 }
-                HomeKind.Media -> Unit
+                HomeKind.Media, HomeKind.Battery, HomeKind.Calendar -> add(Triple(Icons.Outlined.Palette, "Style") { styling = c })
                 HomeKind.Folder -> add(Triple(Icons.Outlined.DriveFileRenameOutline, "Rename") { renaming = c })
                 HomeKind.App -> apps.firstOrNull { it.key == c.app }?.let { a -> add(Triple(Icons.Outlined.Info, "Options") { onMenu(a) }) }
             }
@@ -835,7 +869,7 @@ fun HomePages(
         }
     }
 
-    CompositionLocalProvider(LocalHomeEditing provides editor.editing, LocalShelfPeek provides { a: AppEntry -> haptics?.tick(); peeking = a.key }) {
+    CompositionLocalProvider(LocalHomeEditing provides editor.editing, LocalInkAt provides inkAt, LocalShelfPeek provides { a: AppEntry -> haptics?.tick(); peeking = a.key }) {
         Box(modifier.fillMaxSize()) {
         // Everything but the page is dimmed, so the page reads as a card and its edges are obvious.
         val dim by animateFloatAsState(if (editor.editing) .62f else 0f, motion.settle(), label = "dim")
@@ -851,7 +885,7 @@ fun HomePages(
         Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
             Box(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp).padding(top = 8.dp, bottom = 4.dp)) {
                 BoxWithConstraints(
-                    Modifier.fillMaxSize().onGloballyPositioned { frame = it.boundsInRoot() }
+                    Modifier.fillMaxSize().onGloballyPositioned { frame = it.boundsInRoot(); screen = it.findRootCoordinates().size }
                         .graphicsLayer { scaleX = zoom; scaleY = zoom; translationY = shiftY * zoomT; transformOrigin = TransformOrigin(.5f, 0f) }
                         .onGloballyPositioned { pageRect = it.boundsInRoot() },
                 ) {
@@ -879,7 +913,7 @@ fun HomePages(
                         val density = LocalDensity.current
                         val size = with(density) { DpSize((d.spanX * cw).toDp(), (d.spanY * ch).toDp()) }
                         val lift = entrance(1f, 1.06f)
-                                                Box(
+                        Box(
                             Modifier.offset { IntOffset((d.col * cw + editor.dragOffset.x).roundToInt(), (d.row * ch + editor.dragOffset.y).roundToInt()) }
                                 .size(size).graphicsLayer { scaleX = lift; scaleY = lift; alpha = .92f },
                         ) {
@@ -984,8 +1018,20 @@ fun HomePages(
             if (live == null || live.second.notes.isEmpty()) LaunchedEffect(Unit) { peeking = null }
             else NotificationPeek(live.first, live.second, s, iconColors, onLaunch) { peeking = null }
         }
+        styling?.let { c ->
+            val live = items.firstOrNull { it.id == c.id }
+            if (live == null) styling = null
+            else WidgetStyleSheet(live, s, ink, { styling = null }) { n -> save(current.value.map { if (it.id == n.id) n else it }) }
+        }
         renaming?.let { c -> RenameDialog(c.title, { renaming = null }) { t -> save(current.value.map { if (it.id == c.id) it.copy(title = t) else it }); renaming = null } }
-        if (addSheet) AddToHomeSheet(apps, s, items, pager.currentPage, { addSheet = false }, { dockSheet = true; addSheet = false }) { save(it); addSheet = false }
+        if (addSheet) AddToHomeSheet(apps, s, items, pager.currentPage, { addSheet = false }, { dockSheet = true; addSheet = false }) { next ->
+            save(next); addSheet = false
+            // Whatever was just added is shown and selected, so it's never placed somewhere out of sight.
+            next.singleOrNull { n -> items.none { it.id == n.id } }?.let { added ->
+                editor.open(added.id)
+                if (added.page != pager.currentPage) scope.launch { pager.animateScrollToPage(added.page, animationSpec = motion.settle()) }
+            }
+        }
         if (dockSheet) DockSheet(apps, s, { dockSheet = false }) { keys -> repo.update { it.copy(dock = keys, showDock = keys.isNotEmpty()) }; dockSheet = false }
     }
 }

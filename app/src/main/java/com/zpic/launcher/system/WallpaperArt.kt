@@ -284,9 +284,34 @@ private fun hillSoft(a: Art, y: Float, seed: Int, color: Int) = with(a) {
 }
 
 object WallpaperArt {
+    /** Where the clock and the first lines of text usually sit, as fractions of the screen. */
+    private val clockZone = androidx.compose.ui.geometry.Rect(.05f, .08f, .95f, .45f)
+
     fun render(design: ArtDesign, spec: ArtSpec, w: Int, h: Int): Bitmap {
         val out = createBitmap(w, h, Bitmap.Config.ARGB_8888)
-        design.draw(Art(Canvas(out), w.toFloat(), h.toFloat(), spec, design.id.hashCode()))
+        val art = Art(Canvas(out), w.toFloat(), h.toFloat(), spec, design.id.hashCode())
+        design.draw(art)
+        calmClockZone(out, art)
         return out
+    }
+
+    /**
+     * Busy shapes or mid-tones behind the clock make it hard to read, whatever colour the text is. Designs
+     * that put them there get a soft fade into their own base tone across the clock area, only as strong as
+     * the measured need, so calm designs are left exactly as drawn.
+     */
+    private fun calmClockZone(out: Bitmap, art: Art) {
+        val need = measureWallpaper(out).inkFor(clockZone, 0f)?.protect ?: return
+        if (need < .12f) return
+        val a = (.3f + need * .5f).coerceAtMost(.78f)
+        val base = art.t(.07f)
+        fun tone(f: Float) = ColorUtils.setAlphaComponent(base, (255 * a * f).toInt())
+        art.clear()
+        art.p.shader = LinearGradient(
+            0f, 0f, 0f, art.h * .62f,
+            intArrayOf(tone(.75f), tone(1f), tone(1f), tone(0f)), floatArrayOf(0f, .14f, .7f, 1f), Shader.TileMode.CLAMP,
+        )
+        art.c.drawRect(0f, 0f, art.w, art.h * .62f, art.p)
+        art.clear()
     }
 }

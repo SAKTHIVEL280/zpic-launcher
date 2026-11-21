@@ -31,6 +31,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -270,7 +271,7 @@ fun rememberWallpaperSeed(stored: Int?): Int? {
 
 /** True while the home wallpaper is light enough that dark text reads better. */
 @Composable
-fun wallpaperIsLight(dim: Float): Boolean {
+fun wallpaperIsLight(dim: Float, luma: com.zpic.launcher.system.WallLuma? = null): Boolean {
     val context = LocalContext.current
     var light by remember { mutableStateOf(false) }
     DisposableEffect(Unit) {
@@ -286,5 +287,49 @@ fun wallpaperIsLight(dim: Float): Boolean {
         manager.addOnColorsChangedListener(listener, Handler(Looper.getMainLooper()))
         onDispose { manager.removeOnColorsChangedListener(listener) }
     }
+    // A wallpaper Zpic measured itself beats the system's whole-image hint: decide from the actual pixels.
+    measuredWallpaper(luma)?.let { m ->
+        val avg = m.mean.average().toFloat() * (1f - dim)
+        return com.zpic.launcher.system.contrast(.0115f, avg) > com.zpic.launcher.system.contrast(1f, avg)
+    }
     return light && dim < 0.2f
+}
+
+/**
+ * For a wallpaper Zpic didn't measure: how much text protection it likely needs, from the colours the
+ * system reports. Mid-tones are the trouble spot, where neither white nor dark text has enough contrast.
+ */
+@Composable
+fun unmeasuredProtection(): Float {
+    val context = LocalContext.current
+    var need by remember { mutableStateOf(0f) }
+    DisposableEffect(Unit) {
+        val manager = WallpaperManager.getInstance(context)
+        fun read(c: WallpaperColors?) {
+            val l = c?.primaryColor?.luminance() ?: run { need = 0f; return }
+            val best = maxOf(com.zpic.launcher.system.contrast(1f, l), com.zpic.launcher.system.contrast(.0115f, l))
+            need = ((4.5f - best) / 3f).coerceIn(0f, .6f)
+        }
+        read(runCatching { manager.getWallpaperColors(WallpaperManager.FLAG_SYSTEM) }.getOrNull())
+        val listener = WallpaperManager.OnColorsChangedListener { c, which -> if (which and WallpaperManager.FLAG_SYSTEM != 0) read(c) }
+        manager.addOnColorsChangedListener(listener, Handler(Looper.getMainLooper()))
+        onDispose { manager.removeOnColorsChangedListener(listener) }
+    }
+    return need
+}
+
+/** The measured brightness map, but only while it still belongs to the wallpaper on screen. */
+@Composable
+fun measuredWallpaper(luma: com.zpic.launcher.system.WallLuma?): com.zpic.launcher.system.WallLuma? {
+    val context = LocalContext.current
+    var id by remember { mutableIntStateOf(-2) }
+    DisposableEffect(Unit) {
+        val manager = WallpaperManager.getInstance(context)
+        fun read() { id = runCatching { manager.getWallpaperId(WallpaperManager.FLAG_SYSTEM) }.getOrDefault(-2) }
+        read()
+        val listener = WallpaperManager.OnColorsChangedListener { _, which -> if (which and WallpaperManager.FLAG_SYSTEM != 0) read() }
+        manager.addOnColorsChangedListener(listener, Handler(Looper.getMainLooper()))
+        onDispose { manager.removeOnColorsChangedListener(listener) }
+    }
+    return luma?.takeIf { it.valid && it.id == id && id >= 0 }
 }

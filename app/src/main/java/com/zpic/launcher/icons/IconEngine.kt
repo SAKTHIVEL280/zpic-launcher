@@ -118,7 +118,7 @@ class IconEngine(private val context: Context) {
         canvas.drawColor(bg)
         // Two-tone paints the glyph on its own layer, so the gradient touches only the logo.
         val layer = if (style == IconStyle.TwoTone) canvas.saveLayer(null, null) else -1
-        val mono = (icon as? AdaptiveIconDrawable)?.takeIf { Build.VERSION.SDK_INT >= 33 }?.monochrome
+        val mono = if (Build.VERSION.SDK_INT >= 33) (icon as? AdaptiveIconDrawable)?.monochrome else null
         if (mono != null) {
             val m = mono.mutate()
             m.colorFilter = BlendModeColorFilter(fg, BlendMode.SRC_IN)

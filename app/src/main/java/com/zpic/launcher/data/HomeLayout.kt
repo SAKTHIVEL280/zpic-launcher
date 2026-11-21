@@ -3,7 +3,7 @@ package com.zpic.launcher.data
 import kotlinx.serialization.Serializable
 import kotlin.math.roundToInt
 
-enum class HomeKind { Clock, Pins, Intention, Widget, App, Folder, Shelf, Media }
+enum class HomeKind { Clock, Pins, Intention, Widget, App, Folder, Shelf, Media, Battery, Calendar }
 
 /** A rectangle of grid cells on one page. Items never overlap and always sit on the grid. */
 @Serializable
@@ -20,6 +20,9 @@ data class HomeCell(
     val apps: List<String> = emptyList(),
     val title: String = "",
     val stack: List<Int> = emptyList(),
+    /** For built-in widgets: which design, and which background, by name. Empty means the default. */
+    val style: String = "",
+    val look: String = "",
 ) {
     val resizable get() = kind != HomeKind.App && kind != HomeKind.Folder
 }
